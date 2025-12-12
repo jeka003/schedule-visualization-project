@@ -184,12 +184,12 @@ const Index = () => {
           </div>
         </Card>
 
-        <Dialog open={!!selectedBooking} onOpenChange={() => setSelectedBooking(null)}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Установить статус брони</DialogTitle>
-            </DialogHeader>
-            {selectedBooking && (
+        {selectedBooking && (
+          <Dialog open={true} onOpenChange={() => setSelectedBooking(null)}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Установить статус брони</DialogTitle>
+              </DialogHeader>
               <div className="space-y-4">
                 <div className="text-sm text-gray-600">
                   <p className="font-semibold">{selectedBooking.booking.hall}</p>
@@ -232,9 +232,9 @@ const Index = () => {
                   Сбросить статус
                 </Button>
               </div>
-            )}
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
     </div>
   );
