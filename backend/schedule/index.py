@@ -1,6 +1,5 @@
 import json
 import urllib.request
-import re
 from typing import Dict, Any, List
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -8,7 +7,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     Получает расписание из Google Sheets и преобразует в формат для фронтенда
     Args: event - объект с httpMethod, headers, queryStringParameters
           context - объект с request_id, function_name и другими атрибутами
-    Returns: JSON с массивом бронирований
+    Returns: JSON с массивом бронирований со статусами
     '''
     method: str = event.get('httpMethod', 'GET')
     
@@ -26,37 +25,31 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
     
     if method == 'GET':
-        google_sheets_url = 'https://script.google.com/macros/s/AKfycby_nhnO2oKfZ2J9o1DAe10JjkBGoSomxSYlR9nDbzoGbedDry1F2I46acsx2uLfibrmgQ/exec'
+        google_sheets_url = 'https://script.googleusercontent.com/macros/echo?user_content_key=AehSKLjOx6i8HorZCAYbr-tuEBPJLD5EG9P7MdaBWxQgSevHAjZiVzVFmNxR2YRQyLz620hUOGpZ45NuDGoFkrab1d7X1TCT2dnZV5ubYdY14it9FtYHbFZqls9sH289EgWSvD1AbiMeypMG4DvzrGYhwnCm3Nwqi9p8SrGuC6fsoEujV3d0i08KqsiECBei83rN2eccTgPFPc5bY-J-OHfIuFrIawIXlxXT1ukZ6RqdgKy3QnOGxgt4cZBS1GCJn4gK5ZoSnRk-EMgzQFnDMUQSw9QhSwVN_k1EYIyNvX_vB-xRc1AGbVEM7pDd2RDe-A&lib=MRD1yFWDc3NAGH661xW6qx5qd5ql5Bsbc'
         
         try:
             with urllib.request.urlopen(google_sheets_url, timeout=10) as response:
-                data = response.read().decode('utf-8')
-                
-            bookings: List[Dict[str, Any]] = []
-            lines = data.strip().split('\n')
+                raw_data = response.read().decode('utf-8')
             
-            for line in lines:
-                line = line.strip()
-                if not line:
-                    continue
+            data: List[Dict[str, Any]] = json.loads(raw_data)
+            bookings: List[Dict[str, Any]] = []
+            
+            for item in data:
+                hall_name = item.get('hall', '').replace(' зал', '').strip()
+                people_str = item.get('people', '0')
                 
-                parts = line.split('\t')
-                if len(parts) < 2:
-                    continue
+                try:
+                    people_count = int(people_str) if people_str != '?' else 0
+                except ValueError:
+                    people_count = 0
                 
-                time_range = parts[0].strip()
-                hall_info = parts[1].strip()
-                
-                match = re.match(r'^(.+?)\s+зал(?:,\s*(\d+)\s*чел\.)?', hall_info)
-                if match:
-                    hall_name = match.group(1).strip()
-                    people_count = int(match.group(2)) if match.group(2) else 0
-                    
-                    bookings.append({
-                        'time': time_range,
-                        'hall': hall_name,
-                        'people': people_count
-                    })
+                bookings.append({
+                    'time': item.get('time', ''),
+                    'hall': hall_name,
+                    'people': people_count,
+                    'status': item.get('status', 'booked'),
+                    'comment': item.get('comment', '')
+                })
             
             return {
                 'statusCode': 200,

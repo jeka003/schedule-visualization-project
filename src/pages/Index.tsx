@@ -1,53 +1,14 @@
 import { Card } from "@/components/ui/card";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 
 interface Booking {
   time: string;
   hall: string;
   people: number;
+  status?: string;
+  comment?: string;
 }
-
-const bookingsData: Booking[] = [
-  { time: "09:00–11:00", hall: "Urban", people: 1 },
-  { time: "09:00–11:00", hall: "17/11", people: 2 },
-  { time: "09:30–18:30", hall: "Мастерская", people: 5 },
-  { time: "10:00–11:00", hall: "Графит", people: 5 },
-  { time: "11:00–12:00", hall: "Soft", people: 5 },
-  { time: "11:00–14:00", hall: "Мишель", people: 4 },
-  { time: "11:00–12:00", hall: "17/11", people: 3 },
-  { time: "11:30–13:30", hall: "Монро", people: 1 },
-  { time: "11:30–13:30", hall: "Моне", people: 1 },
-  { time: "12:00–13:00", hall: "17/11", people: 6 },
-  { time: "12:00–13:00", hall: "Shanti", people: 4 },
-  { time: "12:00–13:00", hall: "Soft", people: 3 },
-  { time: "13:00–14:00", hall: "Soft", people: 9 },
-  { time: "13:00–14:00", hall: "17/11", people: 5 },
-  { time: "13:00–14:00", hall: "Urban", people: 4 },
-  { time: "13:00–15:00", hall: "Циклорама А", people: 0 },
-  { time: "13:00–14:00", hall: "Циклорама Б", people: 3 },
-  { time: "13:30–15:30", hall: "Моне", people: 4 },
-  { time: "13:30–13:30", hall: "Монро", people: 2 },
-  { time: "14:00–15:00", hall: "Shanti", people: 9 },
-  { time: "14:00–15:00", hall: "17/11", people: 6 },
-  { time: "14:00–15:00", hall: "Графит", people: 2 },
-  { time: "14:00–15:00", hall: "Urban", people: 5 },
-  { time: "14:00–15:00", hall: "Soft", people: 6 },
-  { time: "14:00–15:00", hall: "Мишель", people: 5 },
-  { time: "14:00–15:00", hall: "Циклорама Б", people: 3 },
-  { time: "14:30–15:30", hall: "Монро", people: 2 },
-  { time: "15:00–16:00", hall: "Мишель", people: 2 },
-  { time: "15:00–17:00", hall: "Циклорама Б", people: 2 },
-  { time: "15:00–17:00", hall: "Soft", people: 2 },
-  { time: "15:00–16:00", hall: "17/11", people: 5 },
-  { time: "15:00–16:00", hall: "Urban", people: 5 },
-  { time: "15:00–16:00", hall: "Shanti", people: 4 },
-  { time: "15:00–17:00", hall: "Графит", people: 2 },
-  { time: "15:30–16:30", hall: "Моне", people: 3 },
-  { time: "15:30–16:30", hall: "Монро", people: 1 },
-  { time: "16:00–17:00", hall: "17/11", people: 3 },
-  { time: "16:00–17:00", hall: "Urban", people: 4 },
-  { time: "16:00–17:00", hall: "Shanti", people: 2 },
-  { time: "16:00–17:00", hall: "Циклорама А", people: 3 },
-];
 
 const halls = [
   "Urban",
@@ -98,13 +59,47 @@ const getBookingPosition = (timeRange: string) => {
   return { top, height };
 };
 
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case 'done':
+      return 'bg-green-100 border-green-400 text-green-900';
+    case 'cancelled':
+      return 'bg-red-100 border-red-400 text-red-900 opacity-60';
+    case 'booked':
+    default:
+      return '';
+  }
+};
+
 const Index = () => {
+  const [bookingsData, setBookingsData] = useState<Booking[]>([]);
+  const [halls, setHalls] = useState<string[]>([]);
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['schedule'],
+    queryFn: async () => {
+      const response = await fetch('https://functions.poehali.dev/72c23f35-8acf-4a85-8ad8-d945be4ad72e');
+      if (!response.ok) throw new Error('Failed to fetch schedule');
+      return response.json();
+    },
+    refetchInterval: 60000,
+  });
+
+  useEffect(() => {
+    if (data?.bookings) {
+      setBookingsData(data.bookings);
+      const uniqueHalls = Array.from(new Set(data.bookings.map((b: Booking) => b.hall)));
+      setHalls(uniqueHalls as string[]);
+    }
+  }, [data]);
+
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-[1600px] mx-auto">
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Расписание фотостудии</h1>
-          <p className="text-gray-600">13 декабря 2025</p>
+          <p className="text-gray-600">13 декабря 2025 {isLoading && '• Загрузка...'}</p>
+          {error && <p className="text-red-600 text-sm mt-1">Ошибка загрузки данных</p>}
         </div>
 
         <Card className="overflow-hidden shadow-lg">
@@ -131,7 +126,7 @@ const Index = () => {
             </div>
 
             <div className="flex-1 overflow-x-auto">
-              <div className="grid grid-cols-11 min-w-[1400px]">
+              <div className="grid min-w-[1400px]" style={{ gridTemplateColumns: `repeat(${halls.length}, minmax(120px, 1fr))` }}>
                 {halls.map((hall, idx) => (
                   <div key={hall} className="border-r border-gray-200 last:border-r-0">
                     <div className="h-16 border-b border-gray-200 flex items-center justify-center bg-gray-100 px-2">
@@ -156,12 +151,14 @@ const Index = () => {
                         .filter((booking) => booking.hall === hall)
                         .map((booking, bookingIdx) => {
                           const { top, height } = getBookingPosition(booking.time);
-                          const colorClass = hallColors[idx % hallColors.length];
+                          const baseColorClass = hallColors[idx % hallColors.length];
+                          const statusColorClass = getStatusColor(booking.status || 'booked');
+                          const finalColorClass = statusColorClass || baseColorClass;
 
                           return (
                             <div
                               key={bookingIdx}
-                              className={`absolute left-1 right-1 rounded-md border-2 shadow-sm ${colorClass} p-2 overflow-hidden transition-all hover:shadow-md hover:scale-[1.02] cursor-pointer`}
+                              className={`absolute left-1 right-1 rounded-md border-2 shadow-sm ${finalColorClass} p-2 overflow-hidden transition-all hover:shadow-md hover:scale-[1.02] cursor-pointer`}
                               style={{
                                 top: `${top}px`,
                                 height: `${height - 4}px`,
@@ -182,8 +179,19 @@ const Index = () => {
           </div>
         </Card>
 
-        <div className="mt-6 text-sm text-gray-500 text-center">
-          Наведите курсор на бронирование для подробностей
+        <div className="mt-6 flex items-center justify-center gap-6 text-sm text-gray-600">
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 bg-green-100 border-2 border-green-400 rounded"></div>
+            <span>Выполнено</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 bg-purple-100 border-2 border-purple-300 rounded"></div>
+            <span>Забронировано</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 bg-red-100 border-2 border-red-400 rounded opacity-60"></div>
+            <span>Отменено</span>
+          </div>
         </div>
       </div>
     </div>
