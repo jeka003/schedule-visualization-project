@@ -113,19 +113,17 @@ const Index = () => {
               <div className="h-16 border-b border-gray-200"></div>
               <div className="relative" style={{ height: `${timeSlots.length * 60}px` }}>
                 {timeSlots.map((time, idx) => (
-                  <div
-                    key={time}
-                    className="absolute w-full"
-                    style={{ top: `${idx * 60}px` }}
-                  >
-                    <div className="relative h-[60px] border-b border-gray-200 flex items-center justify-center">
-                      <span className="absolute -top-2.5 bg-gray-50 px-2 text-sm font-medium text-gray-600">
+                  <div key={time}>
+                    <div
+                      className="absolute w-full flex flex-col items-center"
+                      style={{ top: `${idx * 60}px` }}
+                    >
+                      <span className="text-sm font-semibold text-gray-700">
                         {time}
                       </span>
-                      <div 
-                        className="absolute w-full border-b border-gray-300"
-                        style={{ top: '30px' }}
-                      ></div>
+                      <span className="text-[10px] text-gray-400 mt-3">
+                        :30
+                      </span>
                     </div>
                   </div>
                 ))}
@@ -144,11 +142,11 @@ const Index = () => {
                       {timeSlots.map((_, timeIdx) => (
                         <div key={timeIdx}>
                           <div
-                            className="absolute w-full border-b border-gray-200"
+                            className="absolute w-full border-b-2 border-gray-300"
                             style={{ top: `${timeIdx * 60}px` }}
                           ></div>
                           <div
-                            className="absolute w-full border-b border-gray-100"
+                            className="absolute w-full border-b border-dashed border-gray-200"
                             style={{ top: `${timeIdx * 60 + 30}px` }}
                           ></div>
                         </div>
