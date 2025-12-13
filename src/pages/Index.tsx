@@ -221,18 +221,18 @@ const Index = () => {
                             <div
                               key={bookingIdx}
                               onClick={() => setSelectedBooking({ booking, hallIdx: idx })}
-                              className={`absolute left-0.5 right-0.5 md:left-1 md:right-1 rounded-sm md:rounded-md border-2 shadow-sm ${finalColorClass} p-1 md:p-2 transition-all hover:shadow-md hover:scale-[1.02] cursor-pointer flex flex-col justify-start`}
+                              className={`absolute left-0.5 right-0.5 md:left-1 md:right-1 rounded-sm md:rounded-md border-2 shadow-sm ${finalColorClass} p-0.5 md:p-1.5 transition-all hover:shadow-md hover:scale-[1.02] cursor-pointer overflow-hidden`}
                               style={{
                                 top: `${top * 0.75}px`,
                                 height: `${(height - 4) * 0.75}px`,
                               }}
                             >
-                              <div className="text-[8px] md:text-xs font-semibold leading-tight flex-shrink-0">{booking.time}</div>
+                              <div className="text-[7px] md:text-[10px] font-semibold leading-none mb-0.5 whitespace-nowrap overflow-hidden text-ellipsis">{booking.time}</div>
                               {booking.people > 0 && (
-                                <div className="text-[8px] md:text-xs opacity-80 leading-tight flex-shrink-0">{booking.people} чел.</div>
+                                <div className="text-[7px] md:text-[10px] opacity-80 leading-none whitespace-nowrap overflow-hidden text-ellipsis">{booking.people} чел.</div>
                               )}
                               {booking.comment && (
-                                <div className="text-[7px] md:text-[10px] mt-0.5 opacity-70 overflow-hidden break-words line-clamp-2">{booking.comment}</div>
+                                <div className="text-[6px] md:text-[9px] mt-0.5 opacity-70 leading-tight line-clamp-2 break-words">{booking.comment}</div>
                               )}
                             </div>
                           );
