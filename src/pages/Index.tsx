@@ -151,8 +151,8 @@ const Index = () => {
     <div className="min-h-screen bg-gray-50 p-2 md:p-8">
       <div className="max-w-full mx-auto">
         <div className="mb-4 md:mb-8 px-2">
-          <h1 className="text-2xl md:text-4xl font-bold text-gray-900 mb-1 md:mb-2">ФОТОСТУДИИ</h1>
-          <p className="text-sm md:text-base text-gray-600">13 декабря 2025 {isLoading && '• Загрузка...'}</p>
+          <h1 className="text-2xl md:text-4xl font-bold text-gray-900 mb-1 md:mb-2"></h1>
+          <p className="text-sm md:text-base text-gray-600"></p>
           {error && <p className="text-red-600 text-sm mt-1">Ошибка загрузки данных</p>}
         </div>
 
