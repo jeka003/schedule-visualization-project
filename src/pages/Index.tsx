@@ -15,15 +15,15 @@ interface Booking {
 const halls = [
   "Urban",
   "17/11",
-  "Мастерская",
   "Графит",
   "Soft",
   "Мишель",
-  "Монро",
-  "Моне",
   "Shanti",
   "Циклорама А",
   "Циклорама Б",
+  "Мастерская",
+  "Монро",
+  "Моне",
 ];
 
 const timeSlots = [
@@ -205,9 +205,7 @@ const Index = () => {
                       <div
                         className="absolute w-full h-0.5 bg-red-500 z-10 shadow-md"
                         style={{ top: `${currentTimePosition * 0.75}px` }}
-                      >
-                        <div className="absolute -left-1.5 md:-left-2 -top-1.5 md:-top-2 w-3 h-3 md:w-4 md:h-4 bg-red-500 rounded-full"></div>
-                      </div>
+                      ></div>
 
                       {bookingsData
                         .filter((booking) => booking.hall === hall)
@@ -223,15 +221,18 @@ const Index = () => {
                             <div
                               key={bookingIdx}
                               onClick={() => setSelectedBooking({ booking, hallIdx: idx })}
-                              className={`absolute left-0.5 right-0.5 md:left-1 md:right-1 rounded-sm md:rounded-md border-2 shadow-sm ${finalColorClass} p-1 md:p-2 overflow-hidden transition-all hover:shadow-md hover:scale-[1.02] cursor-pointer`}
+                              className={`absolute left-0.5 right-0.5 md:left-1 md:right-1 rounded-sm md:rounded-md border-2 shadow-sm ${finalColorClass} p-1 md:p-2 overflow-hidden transition-all hover:shadow-md hover:scale-[1.02] cursor-pointer flex flex-col`}
                               style={{
                                 top: `${top * 0.75}px`,
                                 height: `${(height - 4) * 0.75}px`,
                               }}
                             >
-                              <div className="text-[8px] md:text-xs font-semibold mb-0.5 md:mb-1 leading-tight">{booking.time}</div>
+                              <div className="text-[8px] md:text-xs font-semibold mb-0.5 leading-tight truncate">{booking.time}</div>
                               {booking.people > 0 && (
-                                <div className="text-[8px] md:text-xs opacity-80 leading-tight">{booking.people} чел.</div>
+                                <div className="text-[8px] md:text-xs opacity-80 leading-tight truncate">{booking.people} чел.</div>
+                              )}
+                              {booking.comment && (
+                                <div className="text-[7px] md:text-[10px] mt-0.5 opacity-70 line-clamp-1 break-words">{booking.comment}</div>
                               )}
                             </div>
                           );
