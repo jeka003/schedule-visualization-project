@@ -170,7 +170,12 @@ const Index = () => {
                       <span className="text-[10px] md:text-sm font-semibold text-gray-700">
                         {time}
                       </span>
-                      <span className="text-[8px] md:text-[10px] text-gray-400 mt-1 md:mt-3">
+                    </div>
+                    <div
+                      className="absolute w-full flex justify-center"
+                      style={{ top: `${idx * 45 + 22.5}px` }}
+                    >
+                      <span className="text-[8px] md:text-[10px] text-gray-400">
                         :30
                       </span>
                     </div>
@@ -184,7 +189,7 @@ const Index = () => {
                 {halls.map((hall, idx) => (
                   <div key={hall} className="border-r border-gray-200 last:border-r-0">
                     <div className="h-10 md:h-16 border-b border-gray-200 flex items-center justify-center bg-gray-100 px-1">
-                      <span className="text-[10px] md:text-sm font-semibold text-gray-800 text-center leading-tight">{hall}</span>
+                      <span className={`${hall.includes('Циклорама') ? 'text-[9px] md:text-xs' : 'text-[10px] md:text-sm'} font-semibold text-gray-800 text-center leading-tight`}>{hall}</span>
                     </div>
 
                     <div className="relative" style={{ height: `${timeSlots.length * 45}px` }}>
