@@ -84,7 +84,6 @@ const getStatusColor = (localStatus: string | null) => {
 
 const Index = () => {
   const [bookingsData, setBookingsData] = useState<Booking[]>([]);
-  const [halls, setHalls] = useState<string[]>([]);
   const [selectedBooking, setSelectedBooking] = useState<{ booking: Booking; hallIdx: number } | null>(null);
   const [currentTimePosition, setCurrentTimePosition] = useState(getCurrentTimePosition());
 
@@ -111,8 +110,6 @@ const Index = () => {
   useEffect(() => {
     if (data?.bookings) {
       setBookingsData(data.bookings);
-      const uniqueHalls = Array.from(new Set(data.bookings.map((b: Booking) => b.hall)));
-      setHalls(uniqueHalls as string[]);
     }
   }, [data]);
 
