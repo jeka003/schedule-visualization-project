@@ -5,6 +5,7 @@ import {componentTagger} from "pp-tagger";
 
 // https://vitejs.dev/config/
 export default defineConfig(({mode}) => ({
+    base: '/schedule-visualization-project/',
     plugins: [
         react(),
         mode === 'development' &&
