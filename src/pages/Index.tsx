@@ -53,8 +53,7 @@ const hallColors = [
 const SCHEDULE_URL =
   "https://script.googleusercontent.com/macros/echo?user_content_key=AehSKLhq7h637p_1Ic3WWNNol8axmGyeG4kWRu0moENv3Yugw0AefOytLTI28VKAHqwZUQ8Nso6cxCQoMN2TXdCuMA3PDrPmip42dWSGhvyO4L_-DfUiOYzIwWOIRSkD4a5ljRb9ic_UePindLbFs7oEPhJWjBCpemG8DcpRH5bciFk8tFwY4h7bB1Xs7BJ9ofKQqdFzhevLTidFvsCHwQNRaJJ8WpkBt_cf5dwnNLvigRtlP9vsdBSDu-o9zkqbXemNsWCZKYAuzl9_1X1NwU5HJRCzzuvRn8kIIbj9lMF9&lib=MRD1yFWDc3NAGH661xW6qx5qd5ql5Bsbc";
 
-const STATUSES_URL =
-  "https://functions.poehali.dev/f4d79b06-ae92-448d-8215-d890aa8f58c0";
+const STATUSES_URL = "/api/status";
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
