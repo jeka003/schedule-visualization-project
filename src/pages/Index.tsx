@@ -206,10 +206,12 @@ const Index = () => {
     refetchStatuses();
   };
 
-  return (
-    <div className="min-h-screen bg-gray-50" 
-      style={{ padding: viewportW < 520 ? "8px 8px 8px 0px" : "16px" }}
-      <Card className="overflow-hidden shadow-lg">
+return (
+  <div
+    className="min-h-screen bg-gray-50"
+    style={{ padding: viewportW < 520 ? "8px 8px 8px 0px" : "16px" }}
+  >
+    <Card className="overflow-hidden shadow-lg">
         <div className="flex">
           {/* Левая колонка времени */}
           <div className="border-r bg-gray-50 shrink-0" style={{ width: `${timeColPx}px` }}>
