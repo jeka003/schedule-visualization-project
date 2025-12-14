@@ -8,10 +8,14 @@ type Booking = {
   status?: string;
 };
 
-// ВАЖНО:
-// 1) Лучше вынести в переменные окружения (Vercel → Project → Settings → Environment Variables)
-// 2) Если не хочешь — можешь прямо сюда вставить свой текущий SCHEDULE_URL вместо process.env.GAS_URL
-const GAS_URL = process.env.GAS_URL || ""; // сюда можно вставить твой SCHEDULE_URL
+const GAS_API_URL = process.env.GAS_API_URL || ""; // <- как на твоём скрине
+
+function withParams(baseUrl: string, params: Record<string, string>) {
+  const hasQuery = baseUrl.includes("?");
+  const sep = hasQuery ? "&" : "?";
+  const qs = new URLSearchParams(params).toString();
+  return `${baseUrl}${sep}${qs}`;
+}
 
 function normalizeSchedulePayload(payload: any): Booking[] {
   if (payload && Array.isArray(payload.bookings)) return payload.bookings as Booking[];
@@ -19,72 +23,67 @@ function normalizeSchedulePayload(payload: any): Booking[] {
   return [];
 }
 
-// booking_key во фронте формируется как `${time}_${hall}`
+// booking_key во фронте: `${time}_${hall}`
 function makeFrontendKey(b: Booking) {
   return `${b.time}_${b.hall}`;
 }
 
+// UI -> GAS (в GAS у тебя нет "entered", поэтому маппим в "done")
 function mapUiStatusToGas(uiStatus: string) {
-  const s = String(uiStatus || "").trim().toLowerCase();
+  const s = String(uiStatus ?? "").trim().toLowerCase();
 
-  // твой UI сейчас использует arrived / entered / ""(сброс)
   if (!s) return "none";
   if (s === "entered") return "done";
 
-  // если когда-то добавишь эти варианты в UI — пусть тоже работают
   if (s === "arrived") return "arrived";
   if (s === "done") return "done";
   if (s === "cancelled") return "cancelled";
   if (s === "none") return "none";
   if (s === "booked") return "booked";
 
-  // по умолчанию не пишем мусор
   return "";
 }
 
+// GAS -> UI (чтобы не менять фронт: "done" показываем как "entered")
 function mapGasStatusToUi(gasStatus: string) {
-  const s = String(gasStatus || "").trim().toLowerCase();
-
-  // чтобы НЕ менять фронт: зелёный статус у тебя ожидает "entered"
+  const s = String(gasStatus ?? "").trim().toLowerCase();
   if (s === "done") return "entered";
-
   return s;
 }
 
 async function fetchBookings(): Promise<Booking[]> {
-  if (!GAS_URL) return [];
+  if (!GAS_API_URL) return [];
 
-  // GAS по твоему скрипту: если action пустой — отдаёт расписание
-  const r = await fetch(GAS_URL, { method: "GET" });
+  // В твоём GAS: action пустой или getSchedule -> отдаёт расписание
+  const r = await fetch(GAS_API_URL, { method: "GET" });
   const data = await r.json().catch(() => null);
 
   return normalizeSchedulePayload(data);
 }
 
 async function gasSetStatusByBooking(b: Booking, gasStatus: string) {
-  if (!GAS_URL) return { ok: false, error: "GAS_URL is empty" };
+  if (!GAS_API_URL) return { ok: false, error: "GAS_API_URL is empty" };
   if (!b.row) return { ok: false, error: "Booking row not found" };
   if (!b.id) return { ok: false, error: "Booking id not found" };
   if (!gasStatus) return { ok: false, error: "Invalid status" };
 
-  const url =
-    `${GAS_URL}` +
-    `&action=setStatus` +
-    `&row=${encodeURIComponent(String(b.row))}` +
-    `&status=${encodeURIComponent(gasStatus)}` +
-    `&id=${encodeURIComponent(String(b.id))}`;
+  const url = withParams(GAS_API_URL, {
+    action: "setStatus",
+    row: String(b.row),
+    status: gasStatus,
+    id: String(b.id),
+  });
 
   const r = await fetch(url, { method: "GET" });
   const data = await r.json().catch(() => null);
 
-  // твой Apps Script возвращает { success: true/false }
+  // GAS возвращает { success: true/false }
   if (data?.success === true) return { ok: true };
   return { ok: false, error: "GAS setStatus failed", details: data };
 }
 
 function parseBody(req: VercelRequest) {
-  // твой фронт шлёт application/x-www-form-urlencoded
-  // на Vercel body часто уже распарсен, но делаем устойчиво
+  // фронт шлёт application/x-www-form-urlencoded
   const b: any = (req as any).body;
 
   if (!b) return {};
@@ -98,7 +97,7 @@ function parseBody(req: VercelRequest) {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Cache-Control", "no-store");
 
-  // ✅ GET — отдать все статусы (берём из Google Sheet через GAS)
+  // ✅ GET — отдать все статусы (из Google Sheet через GAS)
   if (req.method === "GET") {
     try {
       const bookings = await fetchBookings();
@@ -108,7 +107,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const key = makeFrontendKey(b);
         const uiStatus = mapGasStatusToUi(b.status || "");
 
-        // как у тебя раньше: если статуса нет — ключ можно не отдавать
+        // как у тебя было: отдаём только реальные статусы (не booked/none)
         if (uiStatus && uiStatus !== "none" && uiStatus !== "booked") {
           statuses[key] = uiStatus;
         }
@@ -120,8 +119,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  // ✅ POST — установить статус (пишем в Google Sheet через GAS)
-  // ВАЖНО: оставляем контракт прежним: booking_key + status
+  // ✅ POST — установить статус (в Google Sheet через GAS)
   if (req.method === "POST") {
     try {
       const body = parseBody(req);
@@ -153,6 +151,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  // ❌ остальные методы
   return res.status(405).json({ ok: false, error: "Method not allowed" });
 }
