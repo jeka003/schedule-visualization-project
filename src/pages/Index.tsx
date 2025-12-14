@@ -212,7 +212,7 @@ const Index = () => {
       const res = await fetch(STATUSES_URL);
       return res.json();
     },
-    refetchInterval: 5000,
+    refetchInterval: 1500,
   });
 
   useEffect(() => {
