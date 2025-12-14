@@ -9,8 +9,8 @@ interface Booking {
   row?: number;
   time: string;
   hall: string;
-  people?: string;   // "2 чел"
-  extras?: string;   // "допы"
+  people?: string;      // "1 чел"
+  extras?: string;      // "софт + пост"
   status?: string;
   comment?: string;
 }
@@ -55,14 +55,12 @@ const parseTime = (timeStr: string): number => {
 };
 
 const splitTimeRange = (timeRange: string) => {
-  // поддержка "–" и "-"
-  const parts = timeRange.split("–").length === 2 ? timeRange.split("–") : timeRange.split("-");
+  const parts = timeRange.includes("–") ? timeRange.split("–") : timeRange.split("-");
   return [String(parts[0] || "").trim(), String(parts[1] || "").trim()] as const;
 };
 
 const getBookingPosition = (timeRange: string) => {
   const [start, end] = splitTimeRange(timeRange);
-
   const startMinutes = parseTime(start);
   const endMinutes = parseTime(end);
   const dayStartMinutes = parseTime("08:00");
@@ -102,7 +100,7 @@ const Index = () => {
   const { data } = useQuery({
     queryKey: ["schedule"],
     queryFn: async () => {
-      // ВАЖНО: тут должен быть реальный URL, без квадратных скобок/markdown
+      // ВАЖНО: строка должна быть обычным URL, без [] и без лишних пробелов
       const res = await fetch("https://functions.poehali.dev/72c23f35-8acf-4a85-8ad8-d945be4ad72e");
       return res.json();
     },
@@ -119,15 +117,22 @@ const Index = () => {
   });
 
   useEffect(() => {
-    // ожидаем { bookings: [...] }
-    if (data?.bookings && Array.isArray(data.bookings)) setBookingsData(data.bookings);
+    // Поддержка обоих форматов:
+    // 1) { bookings: [...] }
+    // 2) просто [...]
+    if (Array.isArray(data)) {
+      setBookingsData(data as Booking[]);
+      return;
+    }
+    if (data?.bookings && Array.isArray(data.bookings)) {
+      setBookingsData(data.bookings as Booking[]);
+      return;
+    }
+    setBookingsData([]);
   }, [data]);
 
   useEffect(() => {
-    const i = setInterval(
-      () => setCurrentTimePosition(getCurrentTimePosition()),
-      60000
-    );
+    const i = setInterval(() => setCurrentTimePosition(getCurrentTimePosition()), 60000);
     return () => clearInterval(i);
   }, []);
 
@@ -186,9 +191,7 @@ const Index = () => {
                         const key = `${booking.time}_${booking.hall}`;
                         const synced = statusesData?.statuses?.[key] ?? null;
 
-                        const color =
-                          getStatusColor(synced) || hallColors[idx % hallColors.length];
-
+                        const color = getStatusColor(synced) || hallColors[idx % hallColors.length];
                         const infoLine = joinPeopleExtras(booking.people, booking.extras);
 
                         return (
@@ -236,10 +239,7 @@ const Index = () => {
               <Button
                 className="flex-1 bg-purple-500"
                 onClick={() => {
-                  updateStatus(
-                    `${selectedBooking.booking.time}_${selectedBooking.booking.hall}`,
-                    "arrived"
-                  );
+                  updateStatus(`${selectedBooking.booking.time}_${selectedBooking.booking.hall}`, "arrived");
                   setSelectedBooking(null);
                 }}
               >
@@ -249,10 +249,7 @@ const Index = () => {
               <Button
                 className="flex-1 bg-green-500"
                 onClick={() => {
-                  updateStatus(
-                    `${selectedBooking.booking.time}_${selectedBooking.booking.hall}`,
-                    "entered"
-                  );
+                  updateStatus(`${selectedBooking.booking.time}_${selectedBooking.booking.hall}`, "entered");
                   setSelectedBooking(null);
                 }}
               >
@@ -264,9 +261,7 @@ const Index = () => {
               variant="outline"
               className="w-full mt-2"
               onClick={() => {
-                deleteStatus(
-                  `${selectedBooking.booking.time}_${selectedBooking.booking.hall}`
-                );
+                deleteStatus(`${selectedBooking.booking.time}_${selectedBooking.booking.hall}`);
                 setSelectedBooking(null);
               }}
             >
