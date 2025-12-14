@@ -1,6 +1,6 @@
 import { Card } from "@/components/ui/card";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
@@ -9,11 +9,15 @@ interface Booking {
   row?: number;
   time: string;
   hall: string;
-  people?: string;      // "1 чел"
-  extras?: string;      // "софт + пост"
+  people?: string;   // "1 чел"
+  extras?: string;   // "софт + пост"
   status?: string;
   comment?: string;
 }
+
+/** ВСТАВЬ СЮДА СВОИ URL КАК ОБЫЧНЫЕ СТРОКИ (БЕЗ []() И БЕЗ ПРОБЕЛОВ) */
+const SCHEDULE_URL = "https://script.googleusercontent.com/macros/echo?user_content_key=AehSKLhq7h637p_1Ic3WWNNol8axmGyeG4kWRu0moENv3Yugw0AefOytLTI28VKAHqwZUQ8Nso6cxCQoMN2TXdCuMA3PDrPmip42dWSGhvyO4L_-DfUiOYzIwWOIRSkD4a5ljRb9ic_UePindLbFs7oEPhJWjBCpemG8DcpRH5bciFk8tFwY4h7bB1Xs7BJ9ofKQqdFzhevLTidFvsCHwQNRaJJ8WpkBt_cf5dwnNLvigRtlP9vsdBSDu-o9zkqbXemNsWCZKYAuzl9_1X1NwU5HJRCzzuvRn8kIIbj9lMF9&lib=MRD1yFWDc3NAGH661xW6qx5qd5ql5Bsbc";
+const STATUSES_URL = "https://functions.poehali.dev/f4d79b06-ae92-448d-8215-d890aa8f58c0";
 
 const halls = [
   "Urban",
@@ -55,12 +59,14 @@ const parseTime = (timeStr: string): number => {
 };
 
 const splitTimeRange = (timeRange: string) => {
+  // поддержка "–" и "-"
   const parts = timeRange.includes("–") ? timeRange.split("–") : timeRange.split("-");
   return [String(parts[0] || "").trim(), String(parts[1] || "").trim()] as const;
 };
 
 const getBookingPosition = (timeRange: string) => {
   const [start, end] = splitTimeRange(timeRange);
+
   const startMinutes = parseTime(start);
   const endMinutes = parseTime(end);
   const dayStartMinutes = parseTime("08:00");
@@ -84,11 +90,21 @@ const getStatusColor = (status: string | null) => {
 };
 
 const joinPeopleExtras = (people?: string, extras?: string) => {
-  const p = (people || "").trim();
-  const e = (extras || "").trim();
+  const p = (people ?? "").trim();
+  const e = (extras ?? "").trim();
   if (p && e) return `${p} · ${e}`;
   return p || e || "";
 };
+
+function normalizeSchedulePayload(payload: any): Booking[] {
+  // 1) { bookings: [...] }
+  if (payload && Array.isArray(payload.bookings)) return payload.bookings as Booking[];
+
+  // 2) просто [...]
+  if (Array.isArray(payload)) return payload as Booking[];
+
+  return [];
+}
 
 const Index = () => {
   const [bookingsData, setBookingsData] = useState<Booking[]>([]);
@@ -97,11 +113,11 @@ const Index = () => {
   const [currentTimePosition, setCurrentTimePosition] =
     useState(getCurrentTimePosition());
 
-  const { data } = useQuery({
+  const { data, error: scheduleError } = useQuery({
     queryKey: ["schedule"],
     queryFn: async () => {
-      // ВАЖНО: строка должна быть обычным URL, без [] и без лишних пробелов
-      const res = await fetch("https://functions.poehali.dev/72c23f35-8acf-4a85-8ad8-d945be4ad72e");
+      const res = await fetch(SCHEDULE_URL, { method: "GET" });
+      if (!res.ok) throw new Error(`schedule HTTP ${res.status}`);
       return res.json();
     },
     refetchInterval: 60000,
@@ -110,25 +126,16 @@ const Index = () => {
   const { data: statusesData, refetch: refetchStatuses } = useQuery({
     queryKey: ["statuses"],
     queryFn: async () => {
-      const res = await fetch("https://functions.poehali.dev/f4d79b06-ae92-448d-8215-d890aa8f58c0");
+      const res = await fetch(STATUSES_URL, { method: "GET" });
+      if (!res.ok) throw new Error(`statuses HTTP ${res.status}`);
       return res.json();
     },
     refetchInterval: 5000,
   });
 
   useEffect(() => {
-    // Поддержка обоих форматов:
-    // 1) { bookings: [...] }
-    // 2) просто [...]
-    if (Array.isArray(data)) {
-      setBookingsData(data as Booking[]);
-      return;
-    }
-    if (data?.bookings && Array.isArray(data.bookings)) {
-      setBookingsData(data.bookings as Booking[]);
-      return;
-    }
-    setBookingsData([]);
+    const normalized = normalizeSchedulePayload(data);
+    setBookingsData(normalized);
   }, [data]);
 
   useEffect(() => {
@@ -137,7 +144,7 @@ const Index = () => {
   }, []);
 
   const updateStatus = async (key: string, status: string) => {
-    await fetch("https://functions.poehali.dev/f4d79b06-ae92-448d-8215-d890aa8f58c0", {
+    await fetch(STATUSES_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ booking_key: key, status }),
@@ -146,7 +153,7 @@ const Index = () => {
   };
 
   const deleteStatus = async (key: string) => {
-    await fetch("https://functions.poehali.dev/f4d79b06-ae92-448d-8215-d890aa8f58c0", {
+    await fetch(STATUSES_URL, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ booking_key: key }),
@@ -154,13 +161,24 @@ const Index = () => {
     refetchStatuses();
   };
 
+  const gridHeightPx = useMemo(() => timeSlots.length * 45, []);
+  const pxScale = 0.75; // 60px в расчётах -> 45px в UI
+
   return (
     <div className="min-h-screen bg-gray-50 p-2 md:p-8">
       <Card className="overflow-hidden shadow-lg">
+        {/* Если schedule не загрузился — покажем причину прямо в интерфейсе */}
+        {scheduleError && (
+          <div className="p-3 text-xs text-red-600 bg-red-50 border-b">
+            Ошибка загрузки расписания: {(scheduleError as Error).message}
+          </div>
+        )}
+
         <div className="flex">
+          {/* Левая шкала времени */}
           <div className="w-12 md:w-20 border-r bg-gray-50">
             <div className="h-10 md:h-16 border-b" />
-            <div className="relative" style={{ height: `${timeSlots.length * 45}px` }}>
+            <div className="relative" style={{ height: `${gridHeightPx}px` }}>
               {timeSlots.map((t, i) => (
                 <div key={t} className="absolute w-full text-center" style={{ top: i * 45 }}>
                   <div className="text-[10px] md:text-sm font-semibold">{t}</div>
@@ -170,6 +188,7 @@ const Index = () => {
             </div>
           </div>
 
+          {/* Колонки залов */}
           <div className="flex-1 overflow-x-auto">
             <div className="grid" style={{ gridTemplateColumns: `repeat(${halls.length}, 1fr)` }}>
               {halls.map((hall, idx) => (
@@ -178,34 +197,36 @@ const Index = () => {
                     {hall}
                   </div>
 
-                  <div className="relative" style={{ height: `${timeSlots.length * 45}px` }}>
+                  <div className="relative" style={{ height: `${gridHeightPx}px` }}>
+                    {/* линия текущего времени */}
                     <div
                       className="absolute w-full h-0.5 bg-red-500 z-10"
-                      style={{ top: `${currentTimePosition * 0.75}px` }}
+                      style={{ top: `${currentTimePosition * pxScale}px` }}
                     />
 
+                    {/* брони */}
                     {bookingsData
                       .filter(b => b.hall === hall)
                       .map((booking, i) => {
                         const { top, height } = getBookingPosition(booking.time);
                         const key = `${booking.time}_${booking.hall}`;
-                        const synced = statusesData?.statuses?.[key] ?? null;
 
+                        const synced = statusesData?.statuses?.[key] ?? null;
                         const color = getStatusColor(synced) || hallColors[idx % hallColors.length];
+
                         const infoLine = joinPeopleExtras(booking.people, booking.extras);
 
                         return (
                           <div
-                            key={i}
+                            key={`${key}_${i}`}
                             onClick={() => setSelectedBooking({ booking, hallIdx: idx })}
                             className={`absolute left-1 right-1 rounded-md border-2 p-1 cursor-pointer ${color}`}
                             style={{
-                              top: `${top * 0.75}px`,
-                              height: `${(height - 4) * 0.75}px`,
+                              top: `${top * pxScale}px`,
+                              height: `${Math.max(18, (height - 4) * pxScale)}px`,
                             }}
                           >
                             <div className="text-[9px] font-semibold">{booking.time}</div>
-
                             {infoLine && (
                               <div className="text-[10px] opacity-80 truncate">
                                 {infoLine}
@@ -245,7 +266,6 @@ const Index = () => {
               >
                 Пришли
               </Button>
-
               <Button
                 className="flex-1 bg-green-500"
                 onClick={() => {
