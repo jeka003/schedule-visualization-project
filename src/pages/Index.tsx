@@ -106,31 +106,52 @@ const getHallLabel = (hall: string, compact: boolean) => {
   return hall;
 };
 
+const getLayoutWidth = () => {
+  if (typeof document === "undefined") return 390;
+  return document.documentElement.clientWidth || window.innerWidth;
+};
+
 const Index = () => {
   const [bookingsData, setBookingsData] = useState<Booking[]>([]);
   const [selectedBooking, setSelectedBooking] =
     useState<{ booking: Booking; hallIdx: number } | null>(null);
   const [currentTimePosition, setCurrentTimePosition] = useState(getCurrentTimePosition());
 
-  // responsive
-  const [viewportW, setViewportW] = useState<number>(
-    typeof window !== "undefined" ? window.innerWidth : 390
-  );
+  // responsive: берём layout-ширину
+  const [viewportW, setViewportW] = useState<number>(getLayoutWidth());
 
+  // ВАЖНО: игнорируем pinch-zoom (scale != 1), чтобы кол-во залов не "прыгало"
   useEffect(() => {
-    const onResize = () => setViewportW(window.innerWidth);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    const handler = () => {
+      const scale = window.visualViewport?.scale ?? 1;
+      if (scale !== 1) return; // pinch-zoom — не пересчитываем layout
+      setViewportW(getLayoutWidth());
+    };
+
+    // init
+    setViewportW(getLayoutWidth());
+
+    window.addEventListener("resize", handler);
+    window.addEventListener("orientationchange", handler);
+    window.visualViewport?.addEventListener("resize", handler);
+
+    return () => {
+      window.removeEventListener("resize", handler);
+      window.removeEventListener("orientationchange", handler);
+      window.visualViewport?.removeEventListener("resize", handler);
+    };
   }, []);
+
+  // Отступы вокруг сетки: на телефоне слева 0, но сверху/справа/снизу по 8
+  const padLeft = viewportW < 520 ? 0 : 16;
+  const padRight = viewportW < 520 ? 8 : 16;
+  const padTopBottom = viewportW < 520 ? 8 : 16;
 
   // UX: на телефоне цель — 7 залов на экран
   const visibleCols = viewportW < 520 ? 7 : viewportW < 900 ? 10 : 12;
 
-  // Узкая колонка времени (ты просил)
-  const timeColPx = viewportW < 520 ? 32 : viewportW < 900 ? 64 : 80;
-
-  // Паддинг страницы, чтобы не съедать ширину на телефоне
-  const outerPadding = viewportW < 520 ? 6 : 16;
+  // Узкая колонка времени
+  const timeColPx = viewportW < 520 ? 32 : viewportW < 900 ? 56 : 72;
 
   // Высота часа в UI и масштаб из расчётов 60px/час
   const rowPx = 45;
@@ -138,12 +159,11 @@ const Index = () => {
   const gridHeightPx = timeSlots.length * rowPx;
 
   const colWidth = useMemo(() => {
-    const available = viewportW - outerPadding * 2 - timeColPx;
-    // Минимум и максимум под разные экраны
+    const available = viewportW - padLeft - padRight - timeColPx;
     const min = viewportW < 520 ? 40 : 90;
     const max = viewportW < 900 ? 150 : 190;
     return clamp(Math.floor(available / visibleCols), min, max);
-  }, [viewportW, outerPadding, timeColPx, visibleCols]);
+  }, [viewportW, padLeft, padRight, timeColPx, visibleCols]);
 
   const compactHeaders = colWidth <= 60;
 
@@ -152,10 +172,10 @@ const Index = () => {
   const cardPadPx = viewportW < 520 ? 3 : 6;
   const cardBorderPx = 1;
 
-  // Шрифты в карточках (уменьшены на телефоне)
-  const cardTimeFont = viewportW < 380 ? "text-[4px]" : viewportW < 520 ? "text-[5px]" : "text-[11px]";
-  const cardExtraFont = viewportW < 380 ? "text-[5px]" : viewportW < 520 ? "text-[6px]" : "text-[11px]";
-  const cardPeopleFont = viewportW < 380 ? "text-[4px]" : viewportW < 520 ? "text-[4px]" : "text-[11px]";
+  // Шрифты в карточках (чтобы время не резалось)
+  const cardTimeFont = viewportW < 380 ? "text-[7px]" : viewportW < 520 ? "text-[8px]" : "text-[11px]";
+  const cardExtraFont = viewportW < 380 ? "text-[7px]" : viewportW < 520 ? "text-[8px]" : "text-[11px]";
+  const cardPeopleFont = viewportW < 380 ? "text-[7px]" : viewportW < 520 ? "text-[8px]" : "text-[11px]";
 
   // Шрифт шкалы времени слева
   const timeFontMain = viewportW < 520 ? "text-[9px]" : "text-[11px]";
@@ -206,12 +226,12 @@ const Index = () => {
     refetchStatuses();
   };
 
-return (
-  <div
-    className="min-h-screen bg-gray-50"
-    style={{ padding: viewportW < 520 ? "8px 8px 8px 0px" : "16px" }}
-  >
-    <Card className="overflow-hidden shadow-lg">
+  return (
+    <div
+      className="min-h-screen bg-gray-50"
+      style={{ padding: `${padTopBottom}px ${padRight}px ${padTopBottom}px ${padLeft}px` }}
+    >
+      <Card className="overflow-hidden shadow-lg">
         <div className="flex">
           {/* Левая колонка времени */}
           <div className="border-r bg-gray-50 shrink-0" style={{ width: `${timeColPx}px` }}>
