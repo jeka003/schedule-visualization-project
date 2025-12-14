@@ -106,10 +106,20 @@ const getHallLabel = (hall: string, compact: boolean) => {
   return hall;
 };
 
-// layout-ширина (не “плавает” как innerWidth во время pinch-zoom на iOS)
+// layout-ширина (не "плавает" от pinch-zoom так, как innerWidth)
 const getLayoutWidth = () => {
   if (typeof document === "undefined") return 390;
   return document.documentElement.clientWidth || window.innerWidth;
+};
+
+// form-encoded POST (обычно без preflight)
+const postForm = async (url: string, payload: Record<string, string>) => {
+  const body = new URLSearchParams(payload).toString();
+  return fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+    body,
+  });
 };
 
 const Index = () => {
@@ -118,20 +128,19 @@ const Index = () => {
     useState<{ booking: Booking; hallIdx: number } | null>(null);
   const [currentTimePosition, setCurrentTimePosition] = useState(getCurrentTimePosition());
 
-  // responsive (фиксируем layout ширину)
+  // responsive
   const [viewportW, setViewportW] = useState<number>(
     typeof window !== "undefined" ? getLayoutWidth() : 390
   );
 
+  // фикс от "прыгают колонки после зума": игнорируем resize при visualViewport.scale != 1
   useEffect(() => {
     const onResize = () => {
       const scale = window.visualViewport?.scale ?? 1;
-      // Игнорируем pinch-zoom, чтобы кол-во залов НЕ пересчитывалось
       if (scale !== 1) return;
       setViewportW(getLayoutWidth());
     };
 
-    // стартовое значение при открытии
     setViewportW(getLayoutWidth());
 
     window.addEventListener("resize", onResize);
@@ -151,7 +160,7 @@ const Index = () => {
   // Узкая колонка времени (ты просил)
   const timeColPx = viewportW < 520 ? 32 : viewportW < 900 ? 64 : 80;
 
-  // Паддинг страницы, чтобы не съедать ширину на телефоне
+  // Паддинг страницы
   const outerPadding = viewportW < 520 ? 6 : 16;
 
   // Высота часа в UI и масштаб из расчётов 60px/час
@@ -161,7 +170,6 @@ const Index = () => {
 
   const colWidth = useMemo(() => {
     const available = viewportW - outerPadding * 2 - timeColPx;
-    // Минимум и максимум под разные экраны
     const min = viewportW < 520 ? 40 : 90;
     const max = viewportW < 900 ? 150 : 190;
     return clamp(Math.floor(available / visibleCols), min, max);
@@ -174,7 +182,7 @@ const Index = () => {
   const cardPadPx = viewportW < 520 ? 3 : 6;
   const cardBorderPx = 1;
 
-  // Шрифты в карточках (оставляю как у тебя)
+  // Шрифты в карточках (НЕ ТРОГАЮ — как у тебя)
   const cardTimeFont = viewportW < 380 ? "text-[4px]" : viewportW < 520 ? "text-[5px]" : "text-[11px]";
   const cardExtraFont = viewportW < 380 ? "text-[5px]" : viewportW < 520 ? "text-[6px]" : "text-[11px]";
   const cardPeopleFont = viewportW < 380 ? "text-[4px]" : viewportW < 520 ? "text-[4px]" : "text-[11px]";
@@ -210,22 +218,39 @@ const Index = () => {
     return () => clearInterval(i);
   }, []);
 
+  // === ВАЖНО: статус через form-encoded POST ===
   const updateStatus = async (key: string, status: string) => {
-    await fetch(STATUSES_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ booking_key: key, status }),
-    });
-    refetchStatuses();
+    try {
+      const res = await postForm(STATUSES_URL, { booking_key: key, status });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        console.error("updateStatus failed:", res.status, text);
+        return;
+      }
+
+      refetchStatuses();
+    } catch (e) {
+      console.error("updateStatus error:", e);
+    }
   };
 
+  // === ВАЖНО: сброс тоже через POST, чтобы не упираться в preflight на DELETE ===
   const deleteStatus = async (key: string) => {
-    await fetch(STATUSES_URL, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ booking_key: key }),
-    });
-    refetchStatuses();
+    try {
+      // Вариант A: отправляем статус пустым — сервер часто трактует как "удалить"
+      const res = await postForm(STATUSES_URL, { booking_key: key, status: "" });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        console.error("deleteStatus failed:", res.status, text);
+        return;
+      }
+
+      refetchStatuses();
+    } catch (e) {
+      console.error("deleteStatus error:", e);
+    }
   };
 
   return (
@@ -258,12 +283,10 @@ const Index = () => {
 
               {timeSlots.map((t, i) => (
                 <div key={t} className="absolute left-0 right-0" style={{ top: i * rowPx }}>
-                  {/* Час */}
                   <div className={`w-full text-center ${timeFontMain} font-semibold tabular-nums leading-none`}>
                     {t}
                   </div>
 
-                  {/* Полчаса строго посередине между часами */}
                   {i < timeSlots.length - 1 && (
                     <div
                       className={`absolute left-0 right-0 text-center ${timeFontHalf} text-gray-400 tabular-nums leading-none`}
@@ -282,7 +305,6 @@ const Index = () => {
             <div className="grid" style={{ gridTemplateColumns: `repeat(${halls.length}, ${colWidth}px)` }}>
               {halls.map((hall, idx) => (
                 <div key={hall} className="border-r min-w-0" style={{ width: `${colWidth}px` }}>
-                  {/* Заголовок зала */}
                   <div
                     className="h-10 md:h-16 border-b bg-gray-100 flex items-center justify-center"
                     style={{ width: `${colWidth}px`, padding: compactHeaders ? "2px" : "4px" }}
@@ -353,14 +375,12 @@ const Index = () => {
                               borderStyle: "solid",
                             }}
                           >
-                            {/* 1) время — всегда одной строкой */}
                             <div
                               className={`${cardTimeFont} font-semibold tabular-nums leading-tight whitespace-nowrap overflow-hidden text-ellipsis`}
                             >
                               {booking.time}
                             </div>
 
-                            {/* 2) допы — второй строкой */}
                             {extras && (
                               <div
                                 className={`${cardExtraFont} opacity-90 leading-tight whitespace-nowrap overflow-hidden text-ellipsis`}
@@ -369,7 +389,6 @@ const Index = () => {
                               </div>
                             )}
 
-                            {/* 3) кол-во человек — третьей строкой */}
                             {people && (
                               <div
                                 className={`${cardPeopleFont} opacity-80 leading-tight whitespace-nowrap overflow-hidden text-ellipsis`}
