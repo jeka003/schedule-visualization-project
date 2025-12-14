@@ -127,7 +127,7 @@ const Index = () => {
   const visibleCols = viewportW < 520 ? 7 : viewportW < 900 ? 10 : 12;
 
   // Узкая колонка времени (ты просил)
-  const timeColPx = viewportW < 520 ? 40 : viewportW < 900 ? 64 : 80;
+  const timeColPx = viewportW < 520 ? 32 : viewportW < 900 ? 64 : 80;
 
   // Паддинг страницы, чтобы не съедать ширину на телефоне
   const outerPadding = viewportW < 520 ? 6 : 16;
