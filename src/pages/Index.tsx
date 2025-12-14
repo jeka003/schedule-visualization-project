@@ -153,9 +153,9 @@ const Index = () => {
   const cardBorderPx = 1;
 
   // Шрифты в карточках (уменьшены на телефоне)
-  const cardTimeFont = viewportW < 380 ? "text-[8px]" : viewportW < 520 ? "text-[9px]" : "text-[11px]";
+  const cardTimeFont = viewportW < 380 ? "text-[6px]" : viewportW < 520 ? "text-[7px]" : "text-[11px]";
   const cardExtraFont = viewportW < 380 ? "text-[8px]" : viewportW < 520 ? "text-[9px]" : "text-[11px]";
-  const cardPeopleFont = viewportW < 380 ? "text-[8px]" : viewportW < 520 ? "text-[9px]" : "text-[11px]";
+  const cardPeopleFont = viewportW < 380 ? "text-[6px]" : viewportW < 520 ? "text-[7px]" : "text-[11px]";
 
   // Шрифт шкалы времени слева
   const timeFontMain = viewportW < 520 ? "text-[9px]" : "text-[11px]";
