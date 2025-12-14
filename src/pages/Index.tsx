@@ -7,10 +7,10 @@ import { Button } from "@/components/ui/button";
 interface Booking {
   id?: string;
   row?: number;
-  time: string;
-  hall: string;
-  people?: string;   // "1 чел"
-  extras?: string;   // "софт + пост"
+  time: string;   // "09:00–11:00"
+  hall: string;   // "Urban"
+  people?: string; // "1 чел"
+  extras?: string; // "софт + пост"
   status?: string;
   comment?: string;
 }
@@ -55,6 +55,8 @@ const SCHEDULE_URL =
 
 const STATUSES_URL =
   "https://functions.poehali.dev/f4d79b06-ae92-448d-8215-d890aa8f58c0";
+
+const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
 const parseTime = (timeStr: string): number => {
   const [h, m] = timeStr.split(":").map(Number);
@@ -104,14 +106,11 @@ const getHallLabel = (hall: string, compact: boolean) => {
   return hall;
 };
 
-const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
-
 const Index = () => {
   const [bookingsData, setBookingsData] = useState<Booking[]>([]);
   const [selectedBooking, setSelectedBooking] =
     useState<{ booking: Booking; hallIdx: number } | null>(null);
-  const [currentTimePosition, setCurrentTimePosition] =
-    useState(getCurrentTimePosition());
+  const [currentTimePosition, setCurrentTimePosition] = useState(getCurrentTimePosition());
 
   // responsive
   const [viewportW, setViewportW] = useState<number>(
@@ -124,44 +123,43 @@ const Index = () => {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // базовая геометрия
-  const rowPx = 45; // как было
+  // UX: на телефоне цель — 7 залов на экран
+  const visibleCols = viewportW < 520 ? 7 : viewportW < 900 ? 10 : 12;
+
+  // Узкая колонка времени (ты просил)
+  const timeColPx = viewportW < 520 ? 40 : viewportW < 900 ? 64 : 80;
+
+  // Паддинг страницы, чтобы не съедать ширину на телефоне
+  const outerPadding = viewportW < 520 ? 6 : 24;
+
+  // Высота часа в UI и масштаб из расчётов 60px/час
+  const rowPx = 45;
+  const pxScale = rowPx / 60; // 0.75
   const gridHeightPx = timeSlots.length * rowPx;
 
-  // масштаб из расчётов (60px на час) в UI (45px на час)
-  const pxScale = 0.75;
-
-  // Хотим на телефоне: 7 залов
-  const visibleCols =
-    viewportW < 520 ? 7 : viewportW < 900 ? 10 : 12;
-
-  // Уже колонка времени на телефоне
-  const timeColPx =
-    viewportW < 520 ? 46 : viewportW < 900 ? 70 : 80;
-
-  const outerPadding = viewportW < 520 ? 8 : 32;
-
-  // Ширина колонки зала: одинаковая для всех
   const colWidth = useMemo(() => {
-    const available = viewportW - outerPadding - timeColPx;
-    const min = viewportW < 520 ? 42 : 90;
-    const max = viewportW < 900 ? 140 : 190;
+    const available = viewportW - outerPadding * 2 - timeColPx;
+    // Минимум и максимум под разные экраны
+    const min = viewportW < 520 ? 40 : 90;
+    const max = viewportW < 900 ? 150 : 190;
     return clamp(Math.floor(available / visibleCols), min, max);
   }, [viewportW, outerPadding, timeColPx, visibleCols]);
 
-  const compactHeaders = colWidth <= 62;
+  const compactHeaders = colWidth <= 60;
 
-  // Отступы карточек (минимальные на телефоне)
-  const cardInsetPx = viewportW < 520 ? 2 : 4;
-  const cardPadPx = viewportW < 520 ? 4 : 6;
-  const cardBorderPx = viewportW < 520 ? 1 : 2;
+  // Карточки: минимальные отступы + компактный текст
+  const cardInsetPx = viewportW < 520 ? 1 : 3;
+  const cardPadPx = viewportW < 520 ? 3 : 6;
+  const cardBorderPx = 1;
 
-  const timeFontMain = viewportW < 520 ? "text-[9px]" : "text-[10px] md:text-sm";
+  // Шрифты в карточках (уменьшены на телефоне)
+  const cardTimeFont = viewportW < 380 ? "text-[8px]" : viewportW < 520 ? "text-[9px]" : "text-[11px]";
+  const cardExtraFont = viewportW < 380 ? "text-[8px]" : viewportW < 520 ? "text-[9px]" : "text-[11px]";
+  const cardPeopleFont = viewportW < 380 ? "text-[8px]" : viewportW < 520 ? "text-[9px]" : "text-[11px]";
+
+  // Шрифт шкалы времени слева
+  const timeFontMain = viewportW < 520 ? "text-[9px]" : "text-[11px]";
   const timeFontHalf = viewportW < 520 ? "text-[7px]" : "text-[8px]";
-
-  const cardTimeFont = viewportW < 520 ? "text-[10px]" : "text-[11px]";
-  const cardExtraFont = viewportW < 520 ? "text-[10px]" : "text-[11px]";
-  const cardPeopleFont = viewportW < 520 ? "text-[10px]" : "text-[11px]";
 
   const { data } = useQuery({
     queryKey: ["schedule"],
@@ -209,51 +207,57 @@ const Index = () => {
   };
 
   return (
-    <div
-      className="min-h-screen bg-gray-50"
-      style={{ padding: `${outerPadding}px` }}
-    >
+    <div className="min-h-screen bg-gray-50" style={{ padding: `${outerPadding}px` }}>
       <Card className="overflow-hidden shadow-lg">
         <div className="flex">
-          {/* TIME COLUMN */}
-          <div
-            className="border-r bg-gray-50 shrink-0"
-            style={{ width: `${timeColPx}px` }}
-          >
+          {/* Левая колонка времени */}
+          <div className="border-r bg-gray-50 shrink-0" style={{ width: `${timeColPx}px` }}>
             <div className="h-10 md:h-16 border-b" />
+
             <div className="relative" style={{ height: `${gridHeightPx}px` }}>
+              {/* линии часов/получаса (время-колонка тоже синхронно с сеткой) */}
+              {timeSlots.map((_, i) => (
+                <div key={`t-lines-${i}`}>
+                  <div
+                    className="absolute left-0 right-0 border-t border-gray-200"
+                    style={{ top: i * rowPx }}
+                  />
+                  {i < timeSlots.length - 1 && (
+                    <div
+                      className="absolute left-0 right-0 border-t border-dashed border-gray-200/70"
+                      style={{ top: i * rowPx + rowPx / 2 }}
+                    />
+                  )}
+                </div>
+              ))}
+
               {timeSlots.map((t, i) => (
-                <div
-                  key={t}
-                  className="absolute w-full text-center"
-                  style={{ top: i * rowPx }}
-                >
-                  <div className={`${timeFontMain} font-semibold tabular-nums leading-none`}>
+                <div key={t} className="absolute left-0 right-0" style={{ top: i * rowPx }}>
+                  {/* Час */}
+                  <div className={`w-full text-center ${timeFontMain} font-semibold tabular-nums leading-none`}>
                     {t}
                   </div>
-                  <div className={`${timeFontHalf} text-gray-400 leading-none`}>:30</div>
+
+                  {/* Полчаса строго посередине между часами */}
+                  {i < timeSlots.length - 1 && (
+                    <div
+                      className={`absolute left-0 right-0 text-center ${timeFontHalf} text-gray-400 tabular-nums leading-none`}
+                      style={{ top: rowPx / 2 }}
+                    >
+                      :30
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           </div>
 
-          {/* HALLS */}
-          <div
-            className="flex-1 overflow-x-auto"
-            style={{ WebkitOverflowScrolling: "touch" as any }}
-          >
-            <div
-              className="grid"
-              style={{
-                gridTemplateColumns: `repeat(${halls.length}, ${colWidth}px)`,
-              }}
-            >
+          {/* Сетка залов */}
+          <div className="flex-1 overflow-x-auto" style={{ WebkitOverflowScrolling: "touch" as any }}>
+            <div className="grid" style={{ gridTemplateColumns: `repeat(${halls.length}, ${colWidth}px)` }}>
               {halls.map((hall, idx) => (
-                <div
-                  key={hall}
-                  className="border-r min-w-0"
-                  style={{ width: `${colWidth}px` }}
-                >
+                <div key={hall} className="border-r min-w-0" style={{ width: `${colWidth}px` }}>
+                  {/* Заголовок зала */}
                   <div
                     className="h-10 md:h-16 border-b bg-gray-100 flex items-center justify-center"
                     style={{ width: `${colWidth}px`, padding: compactHeaders ? "2px" : "4px" }}
@@ -274,22 +278,37 @@ const Index = () => {
                   </div>
 
                   <div className="relative" style={{ height: `${gridHeightPx}px` }}>
-                    {/* current time line */}
+                    {/* линии часов/получаса */}
+                    {timeSlots.map((_, i) => (
+                      <div key={`grid-lines-${hall}-${i}`}>
+                        <div
+                          className="absolute left-0 right-0 border-t border-gray-200"
+                          style={{ top: i * rowPx }}
+                        />
+                        {i < timeSlots.length - 1 && (
+                          <div
+                            className="absolute left-0 right-0 border-t border-dashed border-gray-200/70"
+                            style={{ top: i * rowPx + rowPx / 2 }}
+                          />
+                        )}
+                      </div>
+                    ))}
+
+                    {/* красная линия текущего времени */}
                     <div
-                      className="absolute w-full h-0.5 bg-red-500 z-10"
+                      className="absolute left-0 right-0 h-0.5 bg-red-500 z-10"
                       style={{ top: `${currentTimePosition * pxScale}px` }}
                     />
 
-                    {/* bookings */}
+                    {/* брони */}
                     {bookingsData
-                      .filter(b => b.hall === hall)
+                      .filter((b) => b.hall === hall)
                       .map((booking, i) => {
                         const { top, height } = getBookingPosition(booking.time);
                         const key = `${booking.time}_${booking.hall}`;
                         const synced = statusesData?.statuses?.[key] ?? null;
 
-                        const color =
-                          getStatusColor(synced) || hallColors[idx % hallColors.length];
+                        const color = getStatusColor(synced) || hallColors[idx % hallColors.length];
 
                         const extras = (booking.extras ?? "").trim();
                         const people = (booking.people ?? "").trim();
@@ -309,23 +328,23 @@ const Index = () => {
                               borderStyle: "solid",
                             }}
                           >
-                            {/* 1) время — всегда видно, одной строкой */}
+                            {/* 1) время — всегда одной строкой */}
                             <div
                               className={`${cardTimeFont} font-semibold tabular-nums leading-tight whitespace-nowrap overflow-hidden text-ellipsis`}
                             >
                               {booking.time}
                             </div>
 
-                            {/* 2) допы — если есть */}
+                            {/* 2) допы — второй строкой */}
                             {extras && (
                               <div
-                                className={`${cardExtraFont} opacity-85 leading-tight whitespace-nowrap overflow-hidden text-ellipsis`}
+                                className={`${cardExtraFont} opacity-90 leading-tight whitespace-nowrap overflow-hidden text-ellipsis`}
                               >
                                 {extras}
                               </div>
                             )}
 
-                            {/* 3) люди — если есть */}
+                            {/* 3) кол-во человек — третьей строкой */}
                             {people && (
                               <div
                                 className={`${cardPeopleFont} opacity-80 leading-tight whitespace-nowrap overflow-hidden text-ellipsis`}
@@ -344,6 +363,7 @@ const Index = () => {
         </div>
       </Card>
 
+      {/* модалка */}
       {selectedBooking && (
         <Dialog open onOpenChange={() => setSelectedBooking(null)}>
           <DialogContent>
@@ -389,9 +409,7 @@ const Index = () => {
               variant="outline"
               className="w-full mt-2"
               onClick={() => {
-                deleteStatus(
-                  `${selectedBooking.booking.time}_${selectedBooking.booking.hall}`
-                );
+                deleteStatus(`${selectedBooking.booking.time}_${selectedBooking.booking.hall}`);
                 setSelectedBooking(null);
               }}
             >
