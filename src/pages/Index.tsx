@@ -134,6 +134,10 @@ const Index = () => {
     useState<{ booking: Booking; hallIdx: number } | null>(null);
   const [currentTimePosition, setCurrentTimePosition] = useState(getCurrentTimePosition());
 
+  // === НОВОЕ: отслеживаем "в процессе" по каждой брони (по ключу) ===
+  const [inFlightByKey, setInFlightByKey] = useState<Record<string, boolean>>({});
+  const inFlightCount = Object.values(inFlightByKey).filter(Boolean).length;
+
   // responsive
   const [viewportW, setViewportW] = useState<number>(
     typeof window !== "undefined" ? getLayoutWidth() : 390
@@ -206,13 +210,14 @@ const Index = () => {
     refetchInterval: 60000,
   });
 
+  // === ВАЖНО: когда идёт запись статуса — выключаем polling, чтобы он не перетёр оптимистический цвет ===
   const { data: statusesData } = useQuery({
     queryKey: ["statuses"],
     queryFn: async () => {
       const res = await fetch(STATUSES_URL);
       return res.json();
     },
-    refetchInterval: 1500,
+    refetchInterval: inFlightCount > 0 ? false : 1500,
   });
 
   useEffect(() => {
@@ -224,7 +229,7 @@ const Index = () => {
     return () => clearInterval(i);
   }, []);
 
-  // === МГНОВЕННОЕ изменение цвета: optimistic update ===
+  // === МГНОВЕННОЕ изменение цвета: optimistic update (пер-бронь) ===
   const statusMutation = useMutation({
     mutationFn: async (vars: { booking_key: string; status: string }) => {
       const res = await postForm(STATUSES_URL, vars);
@@ -237,12 +242,15 @@ const Index = () => {
     },
 
     onMutate: async (vars) => {
-      // Чтобы polling не перетёр наш мгновенный цвет
+      // отмечаем, что именно этот ключ "в процессе"
+      setInFlightByKey((prev) => ({ ...prev, [vars.booking_key]: true }));
+
+      // отменяем текущие refetch статусов, чтобы не перетерли optimistic update [web:75]
       await queryClient.cancelQueries({ queryKey: ["statuses"] });
 
       const prev = queryClient.getQueryData(["statuses"]);
 
-      // Меняем кэш так, будто сервер уже ответил
+      // оптимистически обновляем кэш
       queryClient.setQueryData(["statuses"], (old: any) => {
         const current: StatusesResponse =
           old && typeof old === "object" && old.statuses
@@ -267,17 +275,23 @@ const Index = () => {
     },
 
     onError: (_err, _vars, ctx) => {
-      // Откат, если запрос упал
+      // откат если упало
       if (ctx?.prev) queryClient.setQueryData(["statuses"], ctx.prev);
     },
 
-    onSettled: () => {
-      // Подтянем реальное состояние (из таблицы) после успеха/ошибки
+    onSettled: (_data, _err, vars) => {
+      // снимаем "в процессе" только с этого ключа
+      setInFlightByKey((prev) => {
+        const copy = { ...prev };
+        delete copy[vars.booking_key];
+        return copy;
+      });
+
+      // подтягиваем реальность из таблицы
       queryClient.invalidateQueries({ queryKey: ["statuses"] });
     },
   });
 
-  // Эти функции дергаются в твоей модалке (оставляем интерфейс как был)
   const updateStatus = async (key: string, status: string) => {
     statusMutation.mutate({ booking_key: key, status });
   };
@@ -285,6 +299,12 @@ const Index = () => {
   const deleteStatus = async (key: string) => {
     statusMutation.mutate({ booking_key: key, status: "" });
   };
+
+  // === Для кнопок: блокируем только выбранную бронь ===
+  const selectedKey = selectedBooking
+    ? `${selectedBooking.booking.time}_${selectedBooking.booking.hall}`
+    : "";
+  const selectedIsPending = selectedKey ? !!inFlightByKey[selectedKey] : false;
 
   return (
     <div
@@ -458,7 +478,7 @@ const Index = () => {
             <div className="flex gap-3 mt-4">
               <Button
                 className="flex-1 bg-purple-500"
-                disabled={statusMutation.isPending}
+                disabled={selectedIsPending}
                 onClick={() => {
                   updateStatus(
                     `${selectedBooking.booking.time}_${selectedBooking.booking.hall}`,
@@ -471,7 +491,7 @@ const Index = () => {
               </Button>
               <Button
                 className="flex-1 bg-green-500"
-                disabled={statusMutation.isPending}
+                disabled={selectedIsPending}
                 onClick={() => {
                   updateStatus(
                     `${selectedBooking.booking.time}_${selectedBooking.booking.hall}`,
@@ -487,7 +507,7 @@ const Index = () => {
             <Button
               variant="outline"
               className="w-full mt-2"
-              disabled={statusMutation.isPending}
+              disabled={selectedIsPending}
               onClick={() => {
                 deleteStatus(`${selectedBooking.booking.time}_${selectedBooking.booking.hall}`);
                 setSelectedBooking(null);
