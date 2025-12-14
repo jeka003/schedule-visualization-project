@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 interface Booking {
   id?: string;
   row?: number;
-  time: string; // "09:00–11:00"
+  time: string; // "09:00–11:00" или как угодно криво
   hall: string; // "Urban"
   people?: string; // "1 чел"
   extras?: string; // "софт + пост"
@@ -57,32 +57,90 @@ const STATUSES_URL = "/api/status";
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
-const parseTime = (timeStr: string): number => {
-  const [h, m] = timeStr.split(":").map(Number);
-  return h * 60 + m;
+/**
+ * Нормализуем время:
+ * - заменяем ; на :
+ * - если формат "1300" -> "13:00"
+ * - если формат "13:0014:00" или "13;0014;00" -> делим на 2 времени
+ * - поддерживаем -, – и любые пробелы
+ */
+const normalizeTimeRange = (raw: string) => {
+  let s = String(raw || "").trim();
+
+  // унифицируем странные символы
+  s = s.replace(/;/g, ":").replace(/\s+/g, " ");
+
+  // 1) Пытаемся найти два времени формата HH:MM (после замены ; на :)
+  // пример: "13:0014:00" -> найдёт ["13:00", "14:00"]
+  const hhmm = s.match(/\b([01]?\d|2[0-3]):[0-5]\d\b/g);
+  if (hhmm && hhmm.length >= 2) {
+    return `${hhmm[0]}–${hhmm[1]}`;
+  }
+
+  // 2) Пытаемся найти два времени формата HHMM (без двоеточия)
+  // пример: "13001400" или "13 00 14 00" (если кто-то пробелы наставил)
+  const digits = s.replace(/[^\d]/g, "");
+  if (digits.length >= 8) {
+    const a = digits.slice(0, 4);
+    const b = digits.slice(4, 8);
+    const aFmt = `${a.slice(0, 2)}:${a.slice(2, 4)}`;
+    const bFmt = `${b.slice(0, 2)}:${b.slice(2, 4)}`;
+    return `${aFmt}–${bFmt}`;
+  }
+
+  // 3) Фолбэк: оставляем как есть (может уже нормальный)
+  return s;
+};
+
+const parseTimeFlexible = (timeStr: string): number => {
+  const s = String(timeStr || "").trim().replace(/;/g, ":");
+
+  // HH:MM
+  const m1 = s.match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  if (m1) {
+    const h = Number(m1[1]);
+    const m = Number(m1[2]);
+    return h * 60 + m;
+  }
+
+  // HHMM
+  const m2 = s.match(/^(\d{2})(\d{2})$/);
+  if (m2) {
+    const h = Number(m2[1]);
+    const m = Number(m2[2]);
+    return h * 60 + m;
+  }
+
+  return 0;
 };
 
 const splitTimeRange = (timeRange: string) => {
-  const parts = timeRange.includes("–") ? timeRange.split("–") : timeRange.split("-");
+  const normalized = normalizeTimeRange(timeRange);
+
+  // теперь ожидаем "HH:MM–HH:MM" или "HH:MM-HH:MM"
+  const parts = normalized.includes("–") ? normalized.split("–") : normalized.split("-");
   return [String(parts[0] || "").trim(), String(parts[1] || "").trim()] as const;
 };
 
 const getBookingPosition = (timeRange: string) => {
   const [start, end] = splitTimeRange(timeRange);
-  const startMinutes = parseTime(start);
-  const endMinutes = parseTime(end);
-  const dayStartMinutes = parseTime("08:00");
+  const startMinutes = parseTimeFlexible(start);
+  const endMinutes = parseTimeFlexible(end);
+  const dayStartMinutes = parseTimeFlexible("08:00");
+
+  // защита от мусора (если end меньше start — сделаем минимум 60 минут)
+  const safeEnd = endMinutes > startMinutes ? endMinutes : startMinutes + 60;
 
   return {
     top: ((startMinutes - dayStartMinutes) / 60) * 60,
-    height: ((endMinutes - startMinutes) / 60) * 60,
+    height: ((safeEnd - startMinutes) / 60) * 60,
   };
 };
 
 const getCurrentTimePosition = () => {
   const now = new Date();
   const minutes = now.getHours() * 60 + now.getMinutes();
-  return ((minutes - parseTime("08:00")) / 60) * 60;
+  return ((minutes - parseTimeFlexible("08:00")) / 60) * 60;
 };
 
 const getStatusColor = (status: string | null) => {
@@ -105,13 +163,11 @@ const getHallLabel = (hall: string, compact: boolean) => {
   return hall;
 };
 
-// layout-ширина (не "плавает" от pinch-zoom так, как innerWidth)
 const getLayoutWidth = () => {
   if (typeof document === "undefined") return 390;
   return document.documentElement.clientWidth || window.innerWidth;
 };
 
-// form-encoded POST (обычно без preflight)
 const postForm = async (url: string, payload: Record<string, string>) => {
   const body = new URLSearchParams(payload).toString();
   return fetch(url, {
@@ -134,16 +190,13 @@ const Index = () => {
     useState<{ booking: Booking; hallIdx: number } | null>(null);
   const [currentTimePosition, setCurrentTimePosition] = useState(getCurrentTimePosition());
 
-  // статус "в процессе" по ключу брони
   const [inFlightByKey, setInFlightByKey] = useState<Record<string, boolean>>({});
   const inFlightCount = Object.values(inFlightByKey).filter(Boolean).length;
 
-  // responsive
   const [viewportW, setViewportW] = useState<number>(
     typeof window !== "undefined" ? getLayoutWidth() : 390
   );
 
-  // фикс от "прыгают колонки после зума": игнорируем resize при visualViewport.scale != 1
   useEffect(() => {
     const onResize = () => {
       const scale = window.visualViewport?.scale ?? 1;
@@ -164,16 +217,10 @@ const Index = () => {
     };
   }, []);
 
-  // UX: на телефоне цель — 7 залов на экран
   const visibleCols = viewportW < 520 ? 7 : viewportW < 900 ? 10 : 12;
-
-  // Узкая колонка времени
   const timeColPx = viewportW < 520 ? 32 : viewportW < 900 ? 64 : 80;
-
-  // Паддинг страницы
   const outerPadding = viewportW < 520 ? 6 : 16;
 
-  // Высота часа в UI и масштаб из расчётов 60px/час
   const rowPx = 45;
   const pxScale = rowPx / 60;
   const gridHeightPx = timeSlots.length * rowPx;
@@ -187,21 +234,17 @@ const Index = () => {
 
   const compactHeaders = colWidth <= 60;
 
-  // Карточки: минимальные отступы + компактный текст
   const cardInsetPx = viewportW < 520 ? 1 : 3;
   const cardPadPx = viewportW < 520 ? 3 : 6;
   const cardBorderPx = 1;
 
-  // Шрифты в карточках
   const cardTimeFont = viewportW < 380 ? "text-[4px]" : viewportW < 520 ? "text-[5px]" : "text-[11px]";
   const cardExtraFont = viewportW < 380 ? "text-[5px]" : viewportW < 520 ? "text-[6px]" : "text-[11px]";
   const cardPeopleFont = viewportW < 380 ? "text-[4px]" : viewportW < 520 ? "text-[4px]" : "text-[11px]";
 
-  // Шрифт шкалы времени слева
   const timeFontMain = viewportW < 520 ? "text-[9px]" : "text-[11px]";
   const timeFontHalf = viewportW < 520 ? "text-[7px]" : "text-[8px]";
 
-  // Расписание: no-store + polling раз в 10 секунд
   const { data } = useQuery({
     queryKey: ["schedule"],
     queryFn: async () => {
@@ -212,7 +255,6 @@ const Index = () => {
     refetchOnWindowFocus: true,
   });
 
-  // Статусы: быстрый polling + пауза, пока идёт запись
   const { data: statusesData } = useQuery({
     queryKey: ["statuses"],
     queryFn: async () => {
@@ -234,7 +276,6 @@ const Index = () => {
   const statusMutation = useMutation({
     mutationFn: async (vars: { booking_key: string; status: string }) => {
       const res = await postForm(STATUSES_URL, vars);
-
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new Error(`updateStatus failed: ${res.status} ${text}`);
@@ -259,11 +300,8 @@ const Index = () => {
           statuses: { ...(current.statuses || {}) },
         };
 
-        if (!vars.status) {
-          delete next.statuses[vars.booking_key];
-        } else {
-          next.statuses[vars.booking_key] = vars.status;
-        }
+        if (!vars.status) delete next.statuses[vars.booking_key];
+        else next.statuses[vars.booking_key] = vars.status;
 
         return next;
       });
@@ -281,7 +319,6 @@ const Index = () => {
         delete copy[vars.booking_key];
         return copy;
       });
-
       queryClient.invalidateQueries({ queryKey: ["statuses"] });
     },
   });
@@ -306,7 +343,6 @@ const Index = () => {
     >
       <Card className="overflow-hidden shadow-lg">
         <div className="flex">
-          {/* Левая колонка времени */}
           <div className="border-r bg-gray-50 shrink-0" style={{ width: `${timeColPx}px` }}>
             <div className="h-10 md:h-16 border-b" />
 
@@ -345,7 +381,6 @@ const Index = () => {
             </div>
           </div>
 
-          {/* Сетка залов */}
           <div className="flex-1 overflow-x-auto" style={{ WebkitOverflowScrolling: "touch" as any }}>
             <div className="grid" style={{ gridTemplateColumns: `repeat(${halls.length}, ${colWidth}px)` }}>
               {halls.map((hall, idx) => (
@@ -394,6 +429,8 @@ const Index = () => {
                       .filter((b) => b.hall === hall)
                       .map((booking, i) => {
                         const { top, height } = getBookingPosition(booking.time);
+
+                        // Ключ статусов НЕ меняем (чтобы всё работало как сейчас)
                         const key = `${booking.time}_${booking.hall}`;
                         const synced = statusesData?.statuses?.[key] ?? null;
 
