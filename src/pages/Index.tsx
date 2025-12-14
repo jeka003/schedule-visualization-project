@@ -5,10 +5,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 
 interface Booking {
+  id?: string;
+  row?: number;
   time: string;
   hall: string;
-  people: string;      // ← СТРОКА
-  extras?: string;     // ← ДОПЫ
+  people?: string;   // "2 чел"
+  extras?: string;   // "допы"
   status?: string;
   comment?: string;
 }
@@ -52,8 +54,15 @@ const parseTime = (timeStr: string): number => {
   return h * 60 + m;
 };
 
+const splitTimeRange = (timeRange: string) => {
+  // поддержка "–" и "-"
+  const parts = timeRange.split("–").length === 2 ? timeRange.split("–") : timeRange.split("-");
+  return [String(parts[0] || "").trim(), String(parts[1] || "").trim()] as const;
+};
+
 const getBookingPosition = (timeRange: string) => {
-  const [start, end] = timeRange.split("–");
+  const [start, end] = splitTimeRange(timeRange);
+
   const startMinutes = parseTime(start);
   const endMinutes = parseTime(end);
   const dayStartMinutes = parseTime("08:00");
@@ -76,6 +85,13 @@ const getStatusColor = (status: string | null) => {
   return "";
 };
 
+const joinPeopleExtras = (people?: string, extras?: string) => {
+  const p = (people || "").trim();
+  const e = (extras || "").trim();
+  if (p && e) return `${p} · ${e}`;
+  return p || e || "";
+};
+
 const Index = () => {
   const [bookingsData, setBookingsData] = useState<Booking[]>([]);
   const [selectedBooking, setSelectedBooking] =
@@ -86,6 +102,7 @@ const Index = () => {
   const { data } = useQuery({
     queryKey: ["schedule"],
     queryFn: async () => {
+      // ВАЖНО: тут должен быть реальный URL, без квадратных скобок/markdown
       const res = await fetch("https://functions.poehali.dev/72c23f35-8acf-4a85-8ad8-d945be4ad72e");
       return res.json();
     },
@@ -102,7 +119,8 @@ const Index = () => {
   });
 
   useEffect(() => {
-    if (data?.bookings) setBookingsData(data.bookings);
+    // ожидаем { bookings: [...] }
+    if (data?.bookings && Array.isArray(data.bookings)) setBookingsData(data.bookings);
   }, [data]);
 
   useEffect(() => {
@@ -166,9 +184,12 @@ const Index = () => {
                       .map((booking, i) => {
                         const { top, height } = getBookingPosition(booking.time);
                         const key = `${booking.time}_${booking.hall}`;
-                        const synced = statusesData?.statuses?.[key];
+                        const synced = statusesData?.statuses?.[key] ?? null;
+
                         const color =
                           getStatusColor(synced) || hallColors[idx % hallColors.length];
+
+                        const infoLine = joinPeopleExtras(booking.people, booking.extras);
 
                         return (
                           <div
@@ -182,12 +203,9 @@ const Index = () => {
                           >
                             <div className="text-[9px] font-semibold">{booking.time}</div>
 
-                            {booking.people && (
+                            {infoLine && (
                               <div className="text-[10px] opacity-80 truncate">
-                                {booking.people}
-                                {booking.extras && (
-                                  <span className="opacity-70"> · {booking.extras}</span>
-                                )}
+                                {infoLine}
                               </div>
                             )}
                           </div>
@@ -207,13 +225,11 @@ const Index = () => {
             <DialogHeader>
               <DialogTitle>Установить статус</DialogTitle>
             </DialogHeader>
+
             <div className="text-sm text-gray-600 space-y-1">
               <p className="font-semibold">{selectedBooking.booking.hall}</p>
               <p>{selectedBooking.booking.time}</p>
-              <p>
-                {selectedBooking.booking.people}
-                {selectedBooking.booking.extras && ` · ${selectedBooking.booking.extras}`}
-              </p>
+              <p>{joinPeopleExtras(selectedBooking.booking.people, selectedBooking.booking.extras)}</p>
             </div>
 
             <div className="flex gap-3 mt-4">
@@ -229,6 +245,7 @@ const Index = () => {
               >
                 Пришли
               </Button>
+
               <Button
                 className="flex-1 bg-green-500"
                 onClick={() => {
