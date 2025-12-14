@@ -9,8 +9,8 @@ interface Booking {
   row?: number;
   time: string;
   hall: string;
-  people?: string;
-  extras?: string;
+  people?: string;   // "1 чел"
+  extras?: string;   // "софт + пост"
   status?: string;
   comment?: string;
 }
@@ -49,8 +49,12 @@ const hallColors = [
   "bg-rose-100 border-rose-300 text-rose-900",
 ];
 
-const SCHEDULE_URL = "https://script.googleusercontent.com/macros/echo?user_content_key=AehSKLhq7h637p_1Ic3WWNNol8axmGyeG4kWRu0moENv3Yugw0AefOytLTI28VKAHqwZUQ8Nso6cxCQoMN2TXdCuMA3PDrPmip42dWSGhvyO4L_-DfUiOYzIwWOIRSkD4a5ljRb9ic_UePindLbFs7oEPhJWjBCpemG8DcpRH5bciFk8tFwY4h7bB1Xs7BJ9ofKQqdFzhevLTidFvsCHwQNRaJJ8WpkBt_cf5dwnNLvigRtlP9vsdBSDu-o9zkqbXemNsWCZKYAuzl9_1X1NwU5HJRCzzuvRn8kIIbj9lMF9&lib=MRD1yFWDc3NAGH661xW6qx5qd5ql5Bsbc";
-const STATUSES_URL = "https://functions.poehali.dev/f4d79b06-ae92-448d-8215-d890aa8f58c0";
+// Твои рабочие URL (оставь как есть)
+const SCHEDULE_URL =
+  "https://script.googleusercontent.com/macros/echo?user_content_key=AehSKLhq7h637p_1Ic3WWNNol8axmGyeG4kWRu0moENv3Yugw0AefOytLTI28VKAHqwZUQ8Nso6cxCQoMN2TXdCuMA3PDrPmip42dWSGhvyO4L_-DfUiOYzIwWOIRSkD4a5ljRb9ic_UePindLbFs7oEPhJWjBCpemG8DcpRH5bciFk8tFwY4h7bB1Xs7BJ9ofKQqdFzhevLTidFvsCHwQNRaJJ8WpkBt_cf5dwnNLvigRtlP9vsdBSDu-o9zkqbXemNsWCZKYAuzl9_1X1NwU5HJRCzzuvRn8kIIbj9lMF9&lib=MRD1yFWDc3NAGH661xW6qx5qd5ql5Bsbc";
+
+const STATUSES_URL =
+  "https://functions.poehali.dev/f4d79b06-ae92-448d-8215-d890aa8f58c0";
 
 const parseTime = (timeStr: string): number => {
   const [h, m] = timeStr.split(":").map(Number);
@@ -86,20 +90,12 @@ const getStatusColor = (status: string | null) => {
   return "";
 };
 
-const joinPeopleExtras = (people?: string, extras?: string) => {
-  const p = (people ?? "").trim();
-  const e = (extras ?? "").trim();
-  if (p && e) return `${p} · ${e}`;
-  return p || e || "";
-};
-
 function normalizeSchedulePayload(payload: any): Booking[] {
   if (payload && Array.isArray(payload.bookings)) return payload.bookings as Booking[];
   if (Array.isArray(payload)) return payload as Booking[];
   return [];
 }
 
-/** Короткие подписи для узких колонок */
 const getHallLabel = (hall: string, compact: boolean) => {
   if (!compact) return hall;
   if (hall === "Циклорама А") return "Цикл А";
@@ -114,9 +110,10 @@ const Index = () => {
   const [bookingsData, setBookingsData] = useState<Booking[]>([]);
   const [selectedBooking, setSelectedBooking] =
     useState<{ booking: Booking; hallIdx: number } | null>(null);
-  const [currentTimePosition, setCurrentTimePosition] = useState(getCurrentTimePosition());
+  const [currentTimePosition, setCurrentTimePosition] =
+    useState(getCurrentTimePosition());
 
-  // --- responsive geometry ---
+  // responsive
   const [viewportW, setViewportW] = useState<number>(
     typeof window !== "undefined" ? window.innerWidth : 390
   );
@@ -127,33 +124,44 @@ const Index = () => {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // Высота сетки (как у тебя): 45px на строку
-  const rowPx = 45;
+  // базовая геометрия
+  const rowPx = 45; // как было
   const gridHeightPx = timeSlots.length * rowPx;
 
-  // Во внутренних расчётах top/height считаются в "60px на час", потом масштабируются до 45px
-  const pxScale = 0.75; // 60 -> 45
+  // масштаб из расчётов (60px на час) в UI (45px на час)
+  const pxScale = 0.75;
 
-  // Сколько залов хотим видеть на мобильном в портретной ориентации
-  const visibleCols = viewportW < 520 ? 8 : viewportW < 900 ? 10 : 12;
+  // Хотим на телефоне: 7 залов
+  const visibleCols =
+    viewportW < 520 ? 7 : viewportW < 900 ? 10 : 12;
 
-  // Ширина левой колонки со временем
-  const timeColPx = viewportW < 520 ? 56 : 80;
+  // Уже колонка времени на телефоне
+  const timeColPx =
+    viewportW < 520 ? 46 : viewportW < 900 ? 70 : 80;
 
-  // Вычисляем ширину одной колонки зала так, чтобы влезало visibleCols.
-  // Важно: делаем единый colWidth для всех залов => одинаковая ширина карточек.
+  const outerPadding = viewportW < 520 ? 8 : 32;
+
+  // Ширина колонки зала: одинаковая для всех
   const colWidth = useMemo(() => {
-    const padding = viewportW < 520 ? 12 : 32; // общий горизонтальный паддинг страницы
-    const available = viewportW - padding - timeColPx;
-
-    // Минимум — чтобы карточка не разваливалась; максимум — чтобы на десктопе не было слишком жирно
-    const min = viewportW < 520 ? 44 : 90;
-    const max = viewportW < 900 ? 130 : 180;
-
+    const available = viewportW - outerPadding - timeColPx;
+    const min = viewportW < 520 ? 42 : 90;
+    const max = viewportW < 900 ? 140 : 190;
     return clamp(Math.floor(available / visibleCols), min, max);
-  }, [viewportW, visibleCols, timeColPx]);
+  }, [viewportW, outerPadding, timeColPx, visibleCols]);
 
-  const compactHeaders = colWidth <= 60;
+  const compactHeaders = colWidth <= 62;
+
+  // Отступы карточек (минимальные на телефоне)
+  const cardInsetPx = viewportW < 520 ? 2 : 4;
+  const cardPadPx = viewportW < 520 ? 4 : 6;
+  const cardBorderPx = viewportW < 520 ? 1 : 2;
+
+  const timeFontMain = viewportW < 520 ? "text-[9px]" : "text-[10px] md:text-sm";
+  const timeFontHalf = viewportW < 520 ? "text-[7px]" : "text-[8px]";
+
+  const cardTimeFont = viewportW < 520 ? "text-[10px]" : "text-[11px]";
+  const cardExtraFont = viewportW < 520 ? "text-[10px]" : "text-[11px]";
+  const cardPeopleFont = viewportW < 520 ? "text-[10px]" : "text-[11px]";
 
   const { data } = useQuery({
     queryKey: ["schedule"],
@@ -201,7 +209,10 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-2 md:p-8">
+    <div
+      className="min-h-screen bg-gray-50"
+      style={{ padding: `${outerPadding}px` }}
+    >
       <Card className="overflow-hidden shadow-lg">
         <div className="flex">
           {/* TIME COLUMN */}
@@ -212,11 +223,15 @@ const Index = () => {
             <div className="h-10 md:h-16 border-b" />
             <div className="relative" style={{ height: `${gridHeightPx}px` }}>
               {timeSlots.map((t, i) => (
-                <div key={t} className="absolute w-full text-center" style={{ top: i * rowPx }}>
-                  <div className="text-[10px] md:text-sm font-semibold tabular-nums leading-none">
+                <div
+                  key={t}
+                  className="absolute w-full text-center"
+                  style={{ top: i * rowPx }}
+                >
+                  <div className={`${timeFontMain} font-semibold tabular-nums leading-none`}>
                     {t}
                   </div>
-                  <div className="text-[8px] text-gray-400 leading-none">:30</div>
+                  <div className={`${timeFontHalf} text-gray-400 leading-none`}>:30</div>
                 </div>
               ))}
             </div>
@@ -240,10 +255,9 @@ const Index = () => {
                   style={{ width: `${colWidth}px` }}
                 >
                   <div
-                    className="h-10 md:h-16 border-b bg-gray-100 flex items-center justify-center px-1"
-                    style={{ width: `${colWidth}px` }}
+                    className="h-10 md:h-16 border-b bg-gray-100 flex items-center justify-center"
+                    style={{ width: `${colWidth}px`, padding: compactHeaders ? "2px" : "4px" }}
                   >
-                    {/* Заголовок: либо компактная подпись + перенос, либо нормальная */}
                     <div
                       className={`w-full text-center font-semibold leading-tight overflow-hidden ${
                         compactHeaders ? "text-[10px]" : "text-xs"
@@ -266,6 +280,7 @@ const Index = () => {
                       style={{ top: `${currentTimePosition * pxScale}px` }}
                     />
 
+                    {/* bookings */}
                     {bookingsData
                       .filter(b => b.hall === hall)
                       .map((booking, i) => {
@@ -276,26 +291,46 @@ const Index = () => {
                         const color =
                           getStatusColor(synced) || hallColors[idx % hallColors.length];
 
-                        const infoLine = joinPeopleExtras(booking.people, booking.extras);
+                        const extras = (booking.extras ?? "").trim();
+                        const people = (booking.people ?? "").trim();
 
                         return (
                           <div
                             key={`${key}_${i}`}
                             onClick={() => setSelectedBooking({ booking, hallIdx: idx })}
-                            className={`absolute left-1 right-1 rounded-md border-2 cursor-pointer overflow-hidden ${color}`}
+                            className={`absolute rounded-md cursor-pointer overflow-hidden ${color}`}
                             style={{
+                              left: `${cardInsetPx}px`,
+                              right: `${cardInsetPx}px`,
                               top: `${top * pxScale}px`,
-                              height: `${Math.max(20, (height - 4) * pxScale)}px`,
-                              padding: colWidth < 56 ? "4px" : "6px",
+                              height: `${Math.max(22, (height - 4) * pxScale)}px`,
+                              padding: `${cardPadPx}px`,
+                              borderWidth: `${cardBorderPx}px`,
+                              borderStyle: "solid",
                             }}
                           >
-                            <div className="text-[10px] font-semibold tabular-nums leading-tight whitespace-nowrap overflow-hidden text-ellipsis">
+                            {/* 1) время — всегда видно, одной строкой */}
+                            <div
+                              className={`${cardTimeFont} font-semibold tabular-nums leading-tight whitespace-nowrap overflow-hidden text-ellipsis`}
+                            >
                               {booking.time}
                             </div>
 
-                            {infoLine && (
-                              <div className="text-[10px] opacity-80 leading-tight whitespace-nowrap overflow-hidden text-ellipsis">
-                                {infoLine}
+                            {/* 2) допы — если есть */}
+                            {extras && (
+                              <div
+                                className={`${cardExtraFont} opacity-85 leading-tight whitespace-nowrap overflow-hidden text-ellipsis`}
+                              >
+                                {extras}
+                              </div>
+                            )}
+
+                            {/* 3) люди — если есть */}
+                            {people && (
+                              <div
+                                className={`${cardPeopleFont} opacity-80 leading-tight whitespace-nowrap overflow-hidden text-ellipsis`}
+                              >
+                                {people}
                               </div>
                             )}
                           </div>
@@ -319,7 +354,8 @@ const Index = () => {
             <div className="text-sm text-gray-600 space-y-1">
               <p className="font-semibold">{selectedBooking.booking.hall}</p>
               <p>{selectedBooking.booking.time}</p>
-              <p>{joinPeopleExtras(selectedBooking.booking.people, selectedBooking.booking.extras)}</p>
+              {selectedBooking.booking.extras && <p>{selectedBooking.booking.extras}</p>}
+              {selectedBooking.booking.people && <p>{selectedBooking.booking.people}</p>}
             </div>
 
             <div className="flex gap-3 mt-4">
@@ -353,7 +389,9 @@ const Index = () => {
               variant="outline"
               className="w-full mt-2"
               onClick={() => {
-                deleteStatus(`${ПselectedBooking.booking.time}_${selectedBooking.booking.hall}`);
+                deleteStatus(
+                  `${selectedBooking.booking.time}_${selectedBooking.booking.hall}`
+                );
                 setSelectedBooking(null);
               }}
             >
