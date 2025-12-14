@@ -1,5 +1,5 @@
 import { Card } from "@/components/ui/card";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button";
 interface Booking {
   id?: string;
   row?: number;
-  time: string;   // "09:00–11:00"
-  hall: string;   // "Urban"
+  time: string; // "09:00–11:00"
+  hall: string; // "Urban"
   people?: string; // "1 чел"
   extras?: string; // "софт + пост"
   status?: string;
@@ -121,7 +121,14 @@ const postForm = async (url: string, payload: Record<string, string>) => {
   });
 };
 
+type StatusesResponse = {
+  ok: boolean;
+  statuses: Record<string, string>;
+};
+
 const Index = () => {
+  const queryClient = useQueryClient();
+
   const [bookingsData, setBookingsData] = useState<Booking[]>([]);
   const [selectedBooking, setSelectedBooking] =
     useState<{ booking: Booking; hallIdx: number } | null>(null);
@@ -199,7 +206,7 @@ const Index = () => {
     refetchInterval: 60000,
   });
 
-  const { data: statusesData, refetch: refetchStatuses } = useQuery({
+  const { data: statusesData } = useQuery({
     queryKey: ["statuses"],
     queryFn: async () => {
       const res = await fetch(STATUSES_URL);
@@ -217,39 +224,66 @@ const Index = () => {
     return () => clearInterval(i);
   }, []);
 
-  // === ВАЖНО: статус через form-encoded POST ===
-  const updateStatus = async (key: string, status: string) => {
-    try {
-      const res = await postForm(STATUSES_URL, { booking_key: key, status });
+  // === МГНОВЕННОЕ изменение цвета: optimistic update ===
+  const statusMutation = useMutation({
+    mutationFn: async (vars: { booking_key: string; status: string }) => {
+      const res = await postForm(STATUSES_URL, vars);
 
       if (!res.ok) {
         const text = await res.text().catch(() => "");
-        console.error("updateStatus failed:", res.status, text);
-        return;
+        throw new Error(`updateStatus failed: ${res.status} ${text}`);
       }
+      return true;
+    },
 
-      refetchStatuses();
-    } catch (e) {
-      console.error("updateStatus error:", e);
-    }
+    onMutate: async (vars) => {
+      // Чтобы polling не перетёр наш мгновенный цвет
+      await queryClient.cancelQueries({ queryKey: ["statuses"] });
+
+      const prev = queryClient.getQueryData(["statuses"]);
+
+      // Меняем кэш так, будто сервер уже ответил
+      queryClient.setQueryData(["statuses"], (old: any) => {
+        const current: StatusesResponse =
+          old && typeof old === "object" && old.statuses
+            ? (old as StatusesResponse)
+            : { ok: true, statuses: {} };
+
+        const next: StatusesResponse = {
+          ...current,
+          statuses: { ...(current.statuses || {}) },
+        };
+
+        if (!vars.status) {
+          delete next.statuses[vars.booking_key];
+        } else {
+          next.statuses[vars.booking_key] = vars.status;
+        }
+
+        return next;
+      });
+
+      return { prev };
+    },
+
+    onError: (_err, _vars, ctx) => {
+      // Откат, если запрос упал
+      if (ctx?.prev) queryClient.setQueryData(["statuses"], ctx.prev);
+    },
+
+    onSettled: () => {
+      // Подтянем реальное состояние (из таблицы) после успеха/ошибки
+      queryClient.invalidateQueries({ queryKey: ["statuses"] });
+    },
+  });
+
+  // Эти функции дергаются в твоей модалке (оставляем интерфейс как был)
+  const updateStatus = async (key: string, status: string) => {
+    statusMutation.mutate({ booking_key: key, status });
   };
 
-  // === ВАЖНО: сброс тоже через POST, чтобы не упираться в preflight на DELETE ===
   const deleteStatus = async (key: string) => {
-    try {
-      // Вариант A: отправляем статус пустым — сервер часто трактует как "удалить"
-      const res = await postForm(STATUSES_URL, { booking_key: key, status: "" });
-
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        console.error("deleteStatus failed:", res.status, text);
-        return;
-      }
-
-      refetchStatuses();
-    } catch (e) {
-      console.error("deleteStatus error:", e);
-    }
+    statusMutation.mutate({ booking_key: key, status: "" });
   };
 
   return (
@@ -424,6 +458,7 @@ const Index = () => {
             <div className="flex gap-3 mt-4">
               <Button
                 className="flex-1 bg-purple-500"
+                disabled={statusMutation.isPending}
                 onClick={() => {
                   updateStatus(
                     `${selectedBooking.booking.time}_${selectedBooking.booking.hall}`,
@@ -436,6 +471,7 @@ const Index = () => {
               </Button>
               <Button
                 className="flex-1 bg-green-500"
+                disabled={statusMutation.isPending}
                 onClick={() => {
                   updateStatus(
                     `${selectedBooking.booking.time}_${selectedBooking.booking.hall}`,
@@ -451,6 +487,7 @@ const Index = () => {
             <Button
               variant="outline"
               className="w-full mt-2"
+              disabled={statusMutation.isPending}
               onClick={() => {
                 deleteStatus(`${selectedBooking.booking.time}_${selectedBooking.booking.hall}`);
                 setSelectedBooking(null);
