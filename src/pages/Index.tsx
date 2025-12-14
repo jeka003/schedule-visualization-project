@@ -7,13 +7,12 @@ import { Button } from "@/components/ui/button";
 interface Booking {
   time: string;
   hall: string;
-  people: number;
+  people: string;      // ← СТРОКА
+  extras?: string;     // ← ДОПЫ
   status?: string;
   comment?: string;
 }
 
-// Порядок залов слева направо в расписании
-// Мастерская, Монро, Моне - перенесены вправо
 const halls = [
   "Urban",
   "17/11",
@@ -29,7 +28,9 @@ const halls = [
 ];
 
 const timeSlots = [
-  "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00", "22:00", "23:00", "00:00"
+  "08:00","09:00","10:00","11:00","12:00","13:00","14:00",
+  "15:00","16:00","17:00","18:00","19:00","20:00",
+  "21:00","22:00","23:00","00:00"
 ];
 
 const hallColors = [
@@ -47,8 +48,8 @@ const hallColors = [
 ];
 
 const parseTime = (timeStr: string): number => {
-  const [hours, minutes] = timeStr.split(":").map(Number);
-  return hours * 60 + minutes;
+  const [h, m] = timeStr.split(":").map(Number);
+  return h * 60 + m;
 };
 
 const getBookingPosition = (timeRange: string) => {
@@ -56,249 +57,207 @@ const getBookingPosition = (timeRange: string) => {
   const startMinutes = parseTime(start);
   const endMinutes = parseTime(end);
   const dayStartMinutes = parseTime("08:00");
-  
-  const top = ((startMinutes - dayStartMinutes) / 60) * 60;
-  const height = ((endMinutes - startMinutes) / 60) * 60;
-  
-  return { top, height };
+
+  return {
+    top: ((startMinutes - dayStartMinutes) / 60) * 60,
+    height: ((endMinutes - startMinutes) / 60) * 60,
+  };
 };
 
 const getCurrentTimePosition = () => {
   const now = new Date();
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
-  const dayStartMinutes = parseTime("08:00");
-  
-  const position = ((currentMinutes - dayStartMinutes) / 60) * 60;
-  return position;
+  const minutes = now.getHours() * 60 + now.getMinutes();
+  return ((minutes - parseTime("08:00")) / 60) * 60;
 };
 
-const getStatusColor = (localStatus: string | null) => {
-  if (localStatus === 'arrived') {
-    return 'bg-purple-100 border-purple-400 text-purple-900';
-  }
-  if (localStatus === 'entered') {
-    return 'bg-green-100 border-green-400 text-green-900';
-  }
-  return '';
+const getStatusColor = (status: string | null) => {
+  if (status === "arrived") return "bg-purple-100 border-purple-400 text-purple-900";
+  if (status === "entered") return "bg-green-100 border-green-400 text-green-900";
+  return "";
 };
 
 const Index = () => {
   const [bookingsData, setBookingsData] = useState<Booking[]>([]);
-  const [selectedBooking, setSelectedBooking] = useState<{ booking: Booking; hallIdx: number } | null>(null);
-  const [currentTimePosition, setCurrentTimePosition] = useState(getCurrentTimePosition());
+  const [selectedBooking, setSelectedBooking] =
+    useState<{ booking: Booking; hallIdx: number } | null>(null);
+  const [currentTimePosition, setCurrentTimePosition] =
+    useState(getCurrentTimePosition());
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['schedule'],
+  const { data } = useQuery({
+    queryKey: ["schedule"],
     queryFn: async () => {
-      const response = await fetch('https://functions.poehali.dev/72c23f35-8acf-4a85-8ad8-d945be4ad72e');
-      if (!response.ok) throw new Error('Failed to fetch schedule');
-      return response.json();
+      const res = await fetch("https://functions.poehali.dev/72c23f35-8acf-4a85-8ad8-d945be4ad72e");
+      return res.json();
     },
     refetchInterval: 60000,
   });
 
   const { data: statusesData, refetch: refetchStatuses } = useQuery({
-    queryKey: ['statuses'],
+    queryKey: ["statuses"],
     queryFn: async () => {
-      const response = await fetch('https://functions.poehali.dev/f4d79b06-ae92-448d-8215-d890aa8f58c0');
-      if (!response.ok) throw new Error('Failed to fetch statuses');
-      return response.json();
+      const res = await fetch("https://functions.poehali.dev/f4d79b06-ae92-448d-8215-d890aa8f58c0");
+      return res.json();
     },
     refetchInterval: 5000,
   });
 
   useEffect(() => {
-    if (data?.bookings) {
-      setBookingsData(data.bookings);
-    }
+    if (data?.bookings) setBookingsData(data.bookings);
   }, [data]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentTimePosition(getCurrentTimePosition());
-    }, 60000);
-    
-    return () => clearInterval(interval);
+    const i = setInterval(
+      () => setCurrentTimePosition(getCurrentTimePosition()),
+      60000
+    );
+    return () => clearInterval(i);
   }, []);
 
-  const updateStatus = async (bookingKey: string, status: string) => {
-    try {
-      await fetch('https://functions.poehali.dev/f4d79b06-ae92-448d-8215-d890aa8f58c0', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ booking_key: bookingKey, status }),
-      });
-      refetchStatuses();
-    } catch (e) {
-      console.error('Failed to update status:', e);
-    }
+  const updateStatus = async (key: string, status: string) => {
+    await fetch("https://functions.poehali.dev/f4d79b06-ae92-448d-8215-d890aa8f58c0", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ booking_key: key, status }),
+    });
+    refetchStatuses();
   };
 
-  const deleteStatus = async (bookingKey: string) => {
-    try {
-      await fetch('https://functions.poehali.dev/f4d79b06-ae92-448d-8215-d890aa8f58c0', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ booking_key: bookingKey }),
-      });
-      refetchStatuses();
-    } catch (e) {
-      console.error('Failed to delete status:', e);
-    }
+  const deleteStatus = async (key: string) => {
+    await fetch("https://functions.poehali.dev/f4d79b06-ae92-448d-8215-d890aa8f58c0", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ booking_key: key }),
+    });
+    refetchStatuses();
   };
 
   return (
     <div className="min-h-screen bg-gray-50 p-2 md:p-8">
-      <div className="max-w-full mx-auto">
-        <div className="mb-4 md:mb-8 px-2">
-          <h1 className="text-2xl md:text-4xl font-bold text-gray-900 mb-1 md:mb-2"></h1>
-          <p className="text-sm md:text-base text-gray-600"></p>
-          {error && <p className="text-red-600 text-sm mt-1">Ошибка загрузки данных</p>}
-        </div>
-
-        <Card className="overflow-hidden shadow-lg">
-          <div className="flex">
-            <div className="w-12 md:w-20 flex-shrink-0 border-r border-gray-200 bg-gray-50">
-              <div className="h-10 md:h-16 border-b border-gray-200"></div>
-              <div className="relative" style={{ height: `${timeSlots.length * 45}px` }}>
-                {timeSlots.map((time, idx) => (
-                  <div key={time}>
-                    <div
-                      className="absolute w-full flex flex-col items-center"
-                      style={{ top: `${idx * 45}px` }}
-                    >
-                      <span className="text-[10px] md:text-sm font-semibold text-gray-700">
-                        {time}
-                      </span>
-                    </div>
-                    <div
-                      className="absolute w-full flex justify-center"
-                      style={{ top: `${idx * 45 + 22.5}px` }}
-                    >
-                      <span className="text-[8px] md:text-[10px] text-gray-400">
-                        :30
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-x-auto">
-              <div className="grid" style={{ gridTemplateColumns: `repeat(${halls.length}, minmax(60px, 1fr))` }}>
-                {halls.map((hall, idx) => (
-                  <div key={hall} className="border-r border-gray-200 last:border-r-0">
-                    <div className="h-10 md:h-16 border-b border-gray-200 flex items-center justify-center bg-gray-100 px-1">
-                      <span className={`${hall.includes('Циклорама') ? 'text-[9px] md:text-xs' : 'text-[10px] md:text-sm'} font-semibold text-gray-800 text-center leading-tight`}>{hall}</span>
-                    </div>
-
-                    <div className="relative" style={{ height: `${timeSlots.length * 45}px` }}>
-                      {timeSlots.map((_, timeIdx) => (
-                        <div key={timeIdx}>
-                          <div
-                            className="absolute w-full border-b-2 border-gray-300"
-                            style={{ top: `${timeIdx * 45}px` }}
-                          ></div>
-                          <div
-                            className="absolute w-full border-b border-dashed border-gray-200"
-                            style={{ top: `${timeIdx * 45 + 22.5}px` }}
-                          ></div>
-                        </div>
-                      ))}
-
-                      <div
-                        className="absolute w-full h-0.5 bg-red-500 z-10 shadow-md"
-                        style={{ top: `${currentTimePosition * 0.75}px` }}
-                      ></div>
-
-                      {bookingsData
-                        .filter((booking) => booking.hall === hall)
-                        .map((booking, bookingIdx) => {
-                          const { top, height } = getBookingPosition(booking.time);
-                          const bookingKey = `${booking.time}_${booking.hall}`;
-                          const syncedStatus = statusesData?.statuses?.[bookingKey];
-                          const baseColorClass = hallColors[idx % hallColors.length];
-                          const statusColorClass = getStatusColor(syncedStatus);
-                          const finalColorClass = statusColorClass || baseColorClass;
-
-                          return (
-                            <div
-                              key={bookingIdx}
-                              onClick={() => setSelectedBooking({ booking, hallIdx: idx })}
-                              className={`absolute left-0.5 right-0.5 md:left-1 md:right-1 rounded-sm md:rounded-md border-2 shadow-sm ${finalColorClass} p-0.5 md:p-1.5 transition-all hover:shadow-md hover:scale-[1.02] cursor-pointer overflow-hidden`}
-                              style={{
-                                top: `${top * 0.75}px`,
-                                height: `${(height - 4) * 0.75}px`,
-                              }}
-                            >
-                              <div className="text-[6px] md:text-[9px] font-semibold leading-none mb-0.5 whitespace-nowrap overflow-visible">{booking.time}</div>
-                              {booking.people > 0 && (
-                                <div className="text-[7px] md:text-[10px] opacity-80 leading-none whitespace-nowrap overflow-hidden text-ellipsis">{booking.people} чел.</div>
-                              )}
-                              {booking.comment && (
-                                <div className="text-[6px] md:text-[9px] mt-0.5 opacity-70 leading-tight line-clamp-2 break-words">{booking.comment}</div>
-                              )}
-                            </div>
-                          );
-                        })}
-                    </div>
-                  </div>
-                ))}
-              </div>
+      <Card className="overflow-hidden shadow-lg">
+        <div className="flex">
+          <div className="w-12 md:w-20 border-r bg-gray-50">
+            <div className="h-10 md:h-16 border-b" />
+            <div className="relative" style={{ height: `${timeSlots.length * 45}px` }}>
+              {timeSlots.map((t, i) => (
+                <div key={t} className="absolute w-full text-center" style={{ top: i * 45 }}>
+                  <div className="text-[10px] md:text-sm font-semibold">{t}</div>
+                  <div className="text-[8px] text-gray-400">:30</div>
+                </div>
+              ))}
             </div>
           </div>
-        </Card>
 
-        {selectedBooking && (
-          <Dialog open={true} onOpenChange={() => setSelectedBooking(null)}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Установить статус брони</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="text-sm text-gray-600">
-                  <p className="font-semibold">{selectedBooking.booking.hall}</p>
-                  <p>{selectedBooking.booking.time}</p>
-                  <p>{selectedBooking.booking.people} чел.</p>
+          <div className="flex-1 overflow-x-auto">
+            <div className="grid" style={{ gridTemplateColumns: `repeat(${halls.length}, 1fr)` }}>
+              {halls.map((hall, idx) => (
+                <div key={hall} className="border-r">
+                  <div className="h-10 md:h-16 border-b bg-gray-100 flex items-center justify-center text-xs font-semibold">
+                    {hall}
+                  </div>
+
+                  <div className="relative" style={{ height: `${timeSlots.length * 45}px` }}>
+                    <div
+                      className="absolute w-full h-0.5 bg-red-500 z-10"
+                      style={{ top: `${currentTimePosition * 0.75}px` }}
+                    />
+
+                    {bookingsData
+                      .filter(b => b.hall === hall)
+                      .map((booking, i) => {
+                        const { top, height } = getBookingPosition(booking.time);
+                        const key = `${booking.time}_${booking.hall}`;
+                        const synced = statusesData?.statuses?.[key];
+                        const color =
+                          getStatusColor(synced) || hallColors[idx % hallColors.length];
+
+                        return (
+                          <div
+                            key={i}
+                            onClick={() => setSelectedBooking({ booking, hallIdx: idx })}
+                            className={`absolute left-1 right-1 rounded-md border-2 p-1 cursor-pointer ${color}`}
+                            style={{
+                              top: `${top * 0.75}px`,
+                              height: `${(height - 4) * 0.75}px`,
+                            }}
+                          >
+                            <div className="text-[9px] font-semibold">{booking.time}</div>
+
+                            {booking.people && (
+                              <div className="text-[10px] opacity-80 truncate">
+                                {booking.people}
+                                {booking.extras && (
+                                  <span className="opacity-70"> · {booking.extras}</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                  </div>
                 </div>
-                <div className="flex gap-3">
-                  <Button
-                    onClick={() => {
-                      const key = `${selectedBooking.booking.time}_${selectedBooking.booking.hall}`;
-                      updateStatus(key, 'arrived');
-                      setSelectedBooking(null);
-                    }}
-                    className="flex-1 bg-purple-500 hover:bg-purple-600"
-                  >
-                    Пришли
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      const key = `${selectedBooking.booking.time}_${selectedBooking.booking.hall}`;
-                      updateStatus(key, 'entered');
-                      setSelectedBooking(null);
-                    }}
-                    className="flex-1 bg-green-500 hover:bg-green-600"
-                  >
-                    Зашли
-                  </Button>
-                </div>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    const key = `${selectedBooking.booking.time}_${selectedBooking.booking.hall}`;
-                    deleteStatus(key);
-                    setSelectedBooking(null);
-                  }}
-                  className="w-full"
-                >
-                  Сбросить статус
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-        )}
-      </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {selectedBooking && (
+        <Dialog open onOpenChange={() => setSelectedBooking(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Установить статус</DialogTitle>
+            </DialogHeader>
+            <div className="text-sm text-gray-600 space-y-1">
+              <p className="font-semibold">{selectedBooking.booking.hall}</p>
+              <p>{selectedBooking.booking.time}</p>
+              <p>
+                {selectedBooking.booking.people}
+                {selectedBooking.booking.extras && ` · ${selectedBooking.booking.extras}`}
+              </p>
+            </div>
+
+            <div className="flex gap-3 mt-4">
+              <Button
+                className="flex-1 bg-purple-500"
+                onClick={() => {
+                  updateStatus(
+                    `${selectedBooking.booking.time}_${selectedBooking.booking.hall}`,
+                    "arrived"
+                  );
+                  setSelectedBooking(null);
+                }}
+              >
+                Пришли
+              </Button>
+              <Button
+                className="flex-1 bg-green-500"
+                onClick={() => {
+                  updateStatus(
+                    `${selectedBooking.booking.time}_${selectedBooking.booking.hall}`,
+                    "entered"
+                  );
+                  setSelectedBooking(null);
+                }}
+              >
+                Зашли
+              </Button>
+            </div>
+
+            <Button
+              variant="outline"
+              className="w-full mt-2"
+              onClick={() => {
+                deleteStatus(
+                  `${selectedBooking.booking.time}_${selectedBooking.booking.hall}`
+                );
+                setSelectedBooking(null);
+              }}
+            >
+              Сбросить статус
+            </Button>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 };
