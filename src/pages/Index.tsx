@@ -134,7 +134,7 @@ const Index = () => {
     useState<{ booking: Booking; hallIdx: number } | null>(null);
   const [currentTimePosition, setCurrentTimePosition] = useState(getCurrentTimePosition());
 
-  // === НОВОЕ: отслеживаем "в процессе" по каждой брони (по ключу) ===
+  // статус "в процессе" по ключу брони
   const [inFlightByKey, setInFlightByKey] = useState<Record<string, boolean>>({});
   const inFlightCount = Object.values(inFlightByKey).filter(Boolean).length;
 
@@ -167,7 +167,7 @@ const Index = () => {
   // UX: на телефоне цель — 7 залов на экран
   const visibleCols = viewportW < 520 ? 7 : viewportW < 900 ? 10 : 12;
 
-  // Узкая колонка времени (ты просил)
+  // Узкая колонка времени
   const timeColPx = viewportW < 520 ? 32 : viewportW < 900 ? 64 : 80;
 
   // Паддинг страницы
@@ -175,7 +175,7 @@ const Index = () => {
 
   // Высота часа в UI и масштаб из расчётов 60px/час
   const rowPx = 45;
-  const pxScale = rowPx / 60; // 0.75
+  const pxScale = rowPx / 60;
   const gridHeightPx = timeSlots.length * rowPx;
 
   const colWidth = useMemo(() => {
@@ -192,7 +192,7 @@ const Index = () => {
   const cardPadPx = viewportW < 520 ? 3 : 6;
   const cardBorderPx = 1;
 
-  // Шрифты в карточках (НЕ ТРОГАЮ — как у тебя)
+  // Шрифты в карточках
   const cardTimeFont = viewportW < 380 ? "text-[4px]" : viewportW < 520 ? "text-[5px]" : "text-[11px]";
   const cardExtraFont = viewportW < 380 ? "text-[5px]" : viewportW < 520 ? "text-[6px]" : "text-[11px]";
   const cardPeopleFont = viewportW < 380 ? "text-[4px]" : viewportW < 520 ? "text-[4px]" : "text-[11px]";
@@ -201,16 +201,18 @@ const Index = () => {
   const timeFontMain = viewportW < 520 ? "text-[9px]" : "text-[11px]";
   const timeFontHalf = viewportW < 520 ? "text-[7px]" : "text-[8px]";
 
+  // Расписание: no-store + polling раз в 10 секунд
   const { data } = useQuery({
     queryKey: ["schedule"],
     queryFn: async () => {
-      const res = await fetch(SCHEDULE_URL);
+      const res = await fetch(SCHEDULE_URL, { cache: "no-store" });
       return res.json();
     },
-    refetchInterval: 60000,
+    refetchInterval: 10000,
+    refetchOnWindowFocus: true,
   });
 
-  // === ВАЖНО: когда идёт запись статуса — выключаем polling, чтобы он не перетёр оптимистический цвет ===
+  // Статусы: быстрый polling + пауза, пока идёт запись
   const { data: statusesData } = useQuery({
     queryKey: ["statuses"],
     queryFn: async () => {
@@ -229,7 +231,6 @@ const Index = () => {
     return () => clearInterval(i);
   }, []);
 
-  // === МГНОВЕННОЕ изменение цвета: optimistic update (пер-бронь) ===
   const statusMutation = useMutation({
     mutationFn: async (vars: { booking_key: string; status: string }) => {
       const res = await postForm(STATUSES_URL, vars);
@@ -242,15 +243,11 @@ const Index = () => {
     },
 
     onMutate: async (vars) => {
-      // отмечаем, что именно этот ключ "в процессе"
       setInFlightByKey((prev) => ({ ...prev, [vars.booking_key]: true }));
 
-      // отменяем текущие refetch статусов, чтобы не перетерли optimistic update [web:75]
       await queryClient.cancelQueries({ queryKey: ["statuses"] });
-
       const prev = queryClient.getQueryData(["statuses"]);
 
-      // оптимистически обновляем кэш
       queryClient.setQueryData(["statuses"], (old: any) => {
         const current: StatusesResponse =
           old && typeof old === "object" && old.statuses
@@ -275,19 +272,16 @@ const Index = () => {
     },
 
     onError: (_err, _vars, ctx) => {
-      // откат если упало
       if (ctx?.prev) queryClient.setQueryData(["statuses"], ctx.prev);
     },
 
     onSettled: (_data, _err, vars) => {
-      // снимаем "в процессе" только с этого ключа
       setInFlightByKey((prev) => {
         const copy = { ...prev };
         delete copy[vars.booking_key];
         return copy;
       });
 
-      // подтягиваем реальность из таблицы
       queryClient.invalidateQueries({ queryKey: ["statuses"] });
     },
   });
@@ -300,7 +294,6 @@ const Index = () => {
     statusMutation.mutate({ booking_key: key, status: "" });
   };
 
-  // === Для кнопок: блокируем только выбранную бронь ===
   const selectedKey = selectedBooking
     ? `${selectedBooking.booking.time}_${selectedBooking.booking.hall}`
     : "";
@@ -318,7 +311,6 @@ const Index = () => {
             <div className="h-10 md:h-16 border-b" />
 
             <div className="relative" style={{ height: `${gridHeightPx}px` }}>
-              {/* линии часов/получаса (время-колонка тоже синхронно с сеткой) */}
               {timeSlots.map((_, i) => (
                 <div key={`t-lines-${i}`}>
                   <div
@@ -378,7 +370,6 @@ const Index = () => {
                   </div>
 
                   <div className="relative" style={{ height: `${gridHeightPx}px` }}>
-                    {/* линии часов/получаса */}
                     {timeSlots.map((_, i) => (
                       <div key={`grid-lines-${hall}-${i}`}>
                         <div
@@ -394,13 +385,11 @@ const Index = () => {
                       </div>
                     ))}
 
-                    {/* красная линия текущего времени */}
                     <div
                       className="absolute left-0 right-0 h-0.5 bg-red-500 z-10"
                       style={{ top: `${currentTimePosition * pxScale}px` }}
                     />
 
-                    {/* брони */}
                     {bookingsData
                       .filter((b) => b.hall === hall)
                       .map((booking, i) => {
@@ -460,7 +449,6 @@ const Index = () => {
         </div>
       </Card>
 
-      {/* модалка */}
       {selectedBooking && (
         <Dialog open onOpenChange={() => setSelectedBooking(null)}>
           <DialogContent>
