@@ -1,4 +1,4 @@
 {
-  "statuses": "https://functions.poehali.dev/f4d79b06-ae92-448d-8215-d890aa8f58c0",
-  "schedule": "https://functions.poehali.dev/72c23f35-8acf-4a85-8ad8-d945be4ad72e"
+  "statuses": "/api/status",
+  "schedule": ""
 }
