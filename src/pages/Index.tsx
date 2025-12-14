@@ -130,7 +130,7 @@ const Index = () => {
   const timeColPx = viewportW < 520 ? 40 : viewportW < 900 ? 64 : 80;
 
   // Паддинг страницы, чтобы не съедать ширину на телефоне
-  const outerPadding = viewportW < 520 ? 6 : 24;
+  const outerPadding = viewportW < 520 ? 6 : 16;
 
   // Высота часа в UI и масштаб из расчётов 60px/час
   const rowPx = 45;
@@ -207,7 +207,8 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50" style={{ padding: `${outerPadding}px` }}>
+    <div className="min-h-screen bg-gray-50" 
+      style={{ padding: viewportW < 520 ? "8px 8px 8px 0px" : "16px" }}
       <Card className="overflow-hidden shadow-lg">
         <div className="flex">
           {/* Левая колонка времени */}
