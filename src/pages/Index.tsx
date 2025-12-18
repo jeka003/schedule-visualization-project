@@ -27,6 +27,12 @@ const halls = [
   "Мастерская",
   "Монро",
   "Моне",
+  "Melody",
+  "Balance",
+  "Gloss",
+  "Монохром",
+  "Cream",
+  "Soda",
 ];
 
 const timeSlots = [
